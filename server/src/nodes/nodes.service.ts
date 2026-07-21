@@ -263,8 +263,6 @@ export class NodesService {
     return this.nodesRepo.save(node);
   }
 
-  async checkPayload(dto: CreateNodeDto) {
-
   async checkConnection(id: string) {
     const node = await this.findOneWithSecrets(id);
     const status = await this.xuiService.checkNodeConnection(node);
