@@ -8,6 +8,7 @@ import {
   Logger,
   Req,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
@@ -19,6 +20,7 @@ interface LoginDto {
   password: string;
 }
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -32,6 +34,9 @@ export class AuthController {
   @Throttle({
     default: { limit: 5, ttl: 60000 },
   })
+  @ApiOperation({ summary: 'Авторизация', description: 'Вход в панель управления' })
+  @ApiResponse({ status: 201, description: 'Успешный вход' })
+  @ApiResponse({ status: 401, description: 'Неверный логин или пароль' })
   @Post('login')
   async login(
     @Body() req: LoginDto,
@@ -48,7 +53,6 @@ export class AuthController {
     }
     const { access_token } = this.authService.login(user as { login: string });
 
-    // Устанавливаем httpOnly cookie
     const isProduction =
       this.configService.get<string>('NODE_ENV') === 'production';
     this.logger.debug(
@@ -56,17 +60,19 @@ export class AuthController {
     );
     res.cookie('access_token', access_token, {
       httpOnly: true,
-      secure: isProduction, // HTTPS только в production
+      secure: isProduction,
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000, // 24 часа
+      maxAge: 24 * 60 * 60 * 1000,
       path: '/',
     });
 
     this.logger.debug(`Login response prepared for user: ${req.login}`);
-    return { access_token };
+    return { success: true };
   }
 
   @Public()
+  @ApiOperation({ summary: 'Выход', description: 'Выход из системы и очистка cookie' })
+  @ApiResponse({ status: 201, description: 'Успешный выход' })
   @Post('logout')
   logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const hadCookie = Boolean(
@@ -90,12 +96,16 @@ export class AuthController {
     return { success: true };
   }
 
+  @ApiOperation({ summary: 'Смена пароля', description: 'Изменение пароля администратора' })
+  @ApiResponse({ status: 201, description: 'Пароль изменён' })
   @Post('change-password')
   async changePassword(@Body('password') password: string) {
     await this.authService.changePassword(password);
     return { success: true };
   }
 
+  @ApiOperation({ summary: 'Обновление профиля', description: 'Обновление логина и/или пароля администратора' })
+  @ApiResponse({ status: 201, description: 'Профиль обновлён' })
   @Post('update-profile')
   async updateProfile(@Body() body: { login: string; password?: string }) {
     await this.authService.updateAdminProfile(body.login, body.password);

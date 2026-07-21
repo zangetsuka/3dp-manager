@@ -12,11 +12,13 @@ import { AxiosInterceptor } from './auth/AxiosInterceptor';
 import PublicRoute from './auth/PublicRoute';
 import TunnelsPage from './pages/TunnelsPage';
 import NodesPage from './pages/NodesPage';
+import { ToastProvider } from './components/ToastProvider';
 
 function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
+        <ToastProvider>
         <BrowserRouter>
         <AxiosInterceptor />
           <Routes>
@@ -38,6 +40,7 @@ function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>
+        </ToastProvider>
       </ThemeProvider>
     </AuthProvider>
   );

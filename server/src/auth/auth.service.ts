@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Setting } from '../settings/entities/setting.entity';
 import { ConfigService } from '@nestjs/config';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +16,7 @@ export class AuthService {
     private settingsRepo: Repository<Setting>,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private readonly audit: AuditService,
   ) {}
 
   async validateUser(
@@ -42,9 +44,11 @@ export class AuthService {
 
     if (isMatch) {
       this.logger.debug('Пароль верный!');
+      await this.audit.log({ action: 'LOGIN', entityType: 'user', entityId: dbLogin.value, detail: 'Successful login' });
       return { login: dbLogin.value };
     } else {
       this.logger.warn('Пароль неверный.');
+      await this.audit.log({ action: 'LOGIN_FAILED', entityType: 'user', entityId: login, detail: 'Failed login attempt' });
       return null;
     }
   }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -14,16 +13,9 @@ import {
   IconButton,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
-  Snackbar,
   Stack,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
@@ -36,11 +28,13 @@ import {
   StarBorder,
   Sync,
 } from '@mui/icons-material';
+import { EnhancedDataGrid, type GridColDef } from '../components/EnhancedDataGrid';
 import api from '../api';
 import { nodesApi } from '../features/nodes/api';
 import type { NodeAuthType, NodePayload, NodeRecord } from '../types/node';
 import { getApiErrorMessage } from '../utils/errorHandlers';
 import { FlagIcon, FlagOptionLabel } from '../utils/flags';
+import { useToast } from '../components/ToastProvider';
 
 const emptyForm: NodePayload = {
   name: '',
@@ -75,11 +69,7 @@ export default function NodesPage() {
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<NodeRecord | null>(null);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof NodePayload, string>>>({});
-  const [message, setMessage] = useState({
-    open: false,
-    type: 'success' as 'success' | 'error',
-    text: '',
-  });
+  const { showToast } = useToast();
 
   const loadNodes = useCallback(async () => {
     const data = await nodesApi.list();
@@ -155,14 +145,10 @@ export default function NodesPage() {
         flag: result.flag || prev.flag,
       }));
       if (result.country || result.ip) {
-        setMessage({
-          open: true,
-          type: 'success',
-          text: `Определено: ${result.country || 'страна неизвестна'}${result.ip ? `, IP ${result.ip}` : ''}`,
-        });
+        showToast(`Определено: ${result.country || 'страна неизвестна'}${result.ip ? `, IP ${result.ip}` : ''}`, 'success');
       }
     } catch {
-      setMessage({ open: true, type: 'error', text: 'Не удалось определить страну ноды' });
+      showToast('Не удалось определить страну ноды', 'error');
     } finally {
       setDetectingLocation(false);
     }
@@ -170,7 +156,7 @@ export default function NodesPage() {
 
   const saveNode = async () => {
     if (!validateForm(!editing)) {
-      setMessage({ open: true, type: 'error', text: 'Заполните обязательные поля' });
+      showToast('Заполните обязательные поля', 'error');
       return;
     }
 
@@ -192,23 +178,19 @@ export default function NodesPage() {
       }
 
       setOpen(false);
-      setMessage({
-        open: true,
-        type: 'success',
-        text: editing ? 'Нода обновлена' : 'Нода добавлена',
-      });
+      showToast(editing ? 'Нода обновлена' : 'Нода добавлена', 'success');
       loadNodes();
     } catch (error: unknown) {
       const text =
         (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         'Не удалось сохранить ноду';
-      setMessage({ open: true, type: 'error', text });
+      showToast(text, 'error');
     }
   };
 
   const checkFormConnection = async () => {
     if (!validateForm(true)) {
-      setMessage({ open: true, type: 'error', text: 'Заполните обязательные поля для проверки подключения' });
+      showToast('Заполните обязательные поля для проверки подключения', 'error');
       return;
     }
 
@@ -220,22 +202,14 @@ export default function NodesPage() {
       token: form.authType === 'token' ? form.token : undefined,
     });
 
-    setMessage({
-      open: true,
-      type: result.success ? 'success' : 'error',
-      text: result.success ? 'Подключение успешно' : 'Не удалось подключиться',
-    });
+    showToast(result.success ? 'Подключение успешно' : 'Не удалось подключиться', result.success ? 'success' : 'error');
   };
 
   const checkNode = async (node: NodeRecord) => {
     setCheckingId(node.id);
     try {
       const result = await nodesApi.check(node.id);
-      setMessage({
-        open: true,
-        type: result.success ? 'success' : 'error',
-        text: result.success ? 'Подключение успешно' : 'Не удалось подключиться',
-      });
+      showToast(result.success ? 'Подключение успешно' : 'Не удалось подключиться', result.success ? 'success' : 'error');
       loadNodes();
     } finally {
       setCheckingId(null);
@@ -244,27 +218,68 @@ export default function NodesPage() {
 
   const syncNodes = async () => {
     const result = await nodesApi.syncFromMain();
-    setMessage({
-      open: true,
-      type: 'success',
-      text: `Синхронизировано нод: ${result.count}`,
-    });
+    showToast(`Синхронизировано нод: ${result.count}`, 'success');
     loadNodes();
   };
+
+  const columns: GridColDef[] = [
+    {
+      field: 'name',
+      headerName: 'Название',
+      width: 250,
+      renderCell: (params) => (
+        <Stack direction="row" spacing={1} alignItems="center">
+          <IconButton size="small" onClick={() => nodesApi.setMain(params.row.id).then(loadNodes)} title={params.row.isMain ? '' : 'Сделать основной'}>
+            {params.row.isMain ? <Star color="warning" /> : <StarBorder />}
+          </IconButton>
+          <Typography fontWeight={700}>{params.row.name}</Typography>
+        </Stack>
+      ),
+    },
+    {
+      field: 'flag',
+      headerName: 'Флаг',
+      width: 80,
+      renderCell: (params) => <FlagIcon flag={params.row.flag} />,
+    },
+    { field: 'ip', headerName: 'IP', width: 160 },
+    { field: 'url', headerName: 'URL панели', width: 300 },
+    { field: 'authType', headerName: 'Авторизация', width: 130 },
+    {
+      field: 'status',
+      headerName: 'Статус',
+      width: 130,
+      renderCell: (params) =>
+        params.row.isMain ? <Chip icon={<CheckCircle />} label="Основная" color="success" size="small" /> : null,
+    },
+    {
+      field: 'actions',
+      headerName: 'Действия',
+      width: 120,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <>
+          <IconButton onClick={() => openEdit(params.row)}>
+            <Edit />
+          </IconButton>
+          <IconButton color="error" onClick={() => setDeleteTarget(params.row)}>
+            <Delete />
+          </IconButton>
+        </>
+      ),
+    },
+  ];
 
   const removeNode = async () => {
     if (!deleteTarget) return;
     try {
       await nodesApi.remove(deleteTarget.id);
       setDeleteTarget(null);
-      setMessage({ open: true, type: 'success', text: 'Нода удалена' });
+      showToast('Нода удалена', 'success');
       loadNodes();
     } catch (error) {
-      setMessage({
-        open: true,
-        type: 'error',
-        text: getApiErrorMessage(error, 'Ошибка удаления ноды'),
-      });
+      showToast(getApiErrorMessage(error, 'Ошибка удаления ноды'), 'error');
     }
   };
 
@@ -286,62 +301,13 @@ export default function NodesPage() {
         </Box>
       </Box>
 
-      <Paper sx={{ overflowX: 'auto' }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Название</TableCell>
-              <TableCell>Флаг</TableCell>
-              <TableCell>IP</TableCell>
-              <TableCell>URL панели</TableCell>
-              <TableCell>Авторизация</TableCell>
-              <TableCell>Статус</TableCell>
-              <TableCell align="right">Действия</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {nodes.map((node) => (
-              <TableRow key={node.id}>
-                <TableCell>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <IconButton size="small" onClick={() => nodesApi.setMain(node.id).then(loadNodes)} title={node.isMain ? '' : 'Сделать основной'}>
-                      {node.isMain ? <Star color="warning" /> : <StarBorder />}
-                    </IconButton>
-                    <Typography fontWeight={700}>{node.name}</Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <FlagIcon flag={node.flag} />
-                </TableCell>
-                <TableCell>{node.ip || '-'}</TableCell>
-                <TableCell>{node.url}</TableCell>
-                <TableCell>{node.authType}</TableCell>
-                <TableCell>
-                  {node.isMain && <Chip icon={<CheckCircle />} label="Основная" color="success" size="small" />}
-                </TableCell>
-                <TableCell align="right">
-                  {/* <IconButton disabled={checkingId === node.id} onClick={() => checkNode(node)}>
-                    {checkingId === node.id ? <CircularProgress size={20} /> : <CheckCircle />}
-                  </IconButton> */}
-                  <IconButton onClick={() => openEdit(node)}>
-                    <Edit />
-                  </IconButton>
-                  <IconButton color="error" onClick={() => setDeleteTarget(node)}>
-                    <Delete />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-            {nodes.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ color: 'text.secondary' }}>
-                  Ноды не добавлены
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Paper>
+      <Box sx={{ height: 600, width: '100%' }}>
+        <EnhancedDataGrid
+          rows={nodes}
+          columns={columns}
+          getRowId={(row) => row.id}
+        />
+      </Box>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{editing ? 'Редактировать ноду' : 'Новая нода'}</DialogTitle>
@@ -463,9 +429,7 @@ export default function NodesPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={message.open} autoHideDuration={5000} onClose={() => setMessage({ ...message, open: false })}>
-        <Alert severity={message.type}>{message.text}</Alert>
-      </Snackbar>
+
     </Box>
   );
 }

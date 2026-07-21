@@ -12,6 +12,7 @@ export class SshService {
       username: string;
       password?: string;
       privateKey?: string;
+      hostKeyFingerprint?: string;
     },
     command: string,
     timeoutMs = 120000,
@@ -25,6 +26,32 @@ export class SshService {
         conn.end();
         callback();
       };
+
+      const connectConfig: Record<string, unknown> = {
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        password: config.password,
+        privateKey: config.privateKey,
+        readyTimeout: 20000,
+      };
+
+      if (config.hostKeyFingerprint) {
+        connectConfig.hostHash = 'sha256';
+        connectConfig.hostVerifier = (keyHash: string) => {
+          const match = keyHash === config.hostKeyFingerprint;
+          if (!match) {
+            this.logger.error(
+              `SSH host key mismatch for ${config.host}:${config.port}. Got ${keyHash}, expected ${config.hostKeyFingerprint}`,
+            );
+          }
+          return match;
+        };
+      } else {
+        this.logger.warn(
+          `No host key fingerprint for ${config.host}:${config.port}. Skipping host key verification.`,
+        );
+      }
 
       conn
         .on('ready', () => {
@@ -63,14 +90,7 @@ export class SshService {
           if (timer) clearTimeout(timer);
           reject(err);
         })
-        .connect({
-          host: config.host,
-          port: config.port,
-          username: config.username,
-          password: config.password,
-          privateKey: config.privateKey,
-          readyTimeout: 20000,
-        });
+        .connect(connectConfig);
     });
   }
 }

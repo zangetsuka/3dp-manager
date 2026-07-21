@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { RotationService } from './rotation.service';
 import { XuiModule } from '../xui/xui.module';
 import { InboundsModule } from '../inbounds/inbounds.module';
+import { AuditModule } from '../audit/audit.module';
+import { JobModule } from '../jobs/job.module';
 
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { Inbound } from '../inbounds/entities/inbound.entity';
@@ -20,6 +22,8 @@ import { Tunnel } from '../tunnels/entities/tunnel.entity';
     ScheduleModule.forRoot(),
     XuiModule,
     InboundsModule,
+    AuditModule,
+    JobModule,
   ],
   providers: [RotationService],
   controllers: [RotationController],

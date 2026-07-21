@@ -17,6 +17,9 @@ import { DomainsModule } from './domains/domains.module';
 import { SettingsModule } from './settings/settings.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { EncryptionModule } from './encryption/encryption.module';
+import { AuditModule } from './audit/audit.module';
+import { JobModule } from './jobs/job.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientModule } from './client/client.module';
 import { TunnelsModule } from './tunnels/tunnels.module';
@@ -27,6 +30,7 @@ import { NodesModule } from './nodes/nodes.module';
 import { AddNodesAndNodeRelations1765960000000 } from './migrations/1765960000000-add-nodes-and-node-relations';
 import { AddNodeIpFlagAndInboundLabels1770000000000 } from './migrations/1770000000000-add-node-ip-flag-and-inbound-labels';
 import { AddNodeDomain1770000000001 } from './migrations/1770000000001-add-node-domain';
+import { InitialBaseTables1770000000002 } from './migrations/1770000000002-initial-base-tables';
 
 @Module({
   imports: [
@@ -51,10 +55,14 @@ import { AddNodeDomain1770000000001 } from './migrations/1770000000001-add-node-
         AddNodesAndNodeRelations1765960000000,
         AddNodeIpFlagAndInboundLabels1770000000000,
         AddNodeDomain1770000000001,
+        InitialBaseTables1770000000002,
       ],
-      synchronize: process.env.DB_SYNCHRONIZE !== 'false',
-      migrationsRun: process.env.DB_MIGRATIONS_RUN === 'true',
+      synchronize: process.env.DB_SYNCHRONIZE === 'true',
+      migrationsRun: process.env.DB_MIGRATIONS_RUN !== 'false',
     }),
+    EncryptionModule,
+    AuditModule,
+    JobModule,
     SessionModule,
     XuiModule,
     InboundsModule,

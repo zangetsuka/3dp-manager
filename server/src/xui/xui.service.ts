@@ -12,6 +12,7 @@ import {
   XuiDiscoveredNode,
 } from './xui.types';
 import { SessionService } from '../session/session.service';
+import { EncryptionService } from '../encryption/encryption.service';
 import { Node, NodeAuthType } from '../nodes/entities/node.entity';
 
 interface LoginResponse {
@@ -27,6 +28,7 @@ export class XuiService {
     @InjectRepository(Setting)
     private settingsRepo: Repository<Setting>,
     private sessionService: SessionService,
+    private encryptionService: EncryptionService,
   ) {
     this.api = axios.create({
       timeout: 15000,
@@ -84,17 +86,20 @@ export class XuiService {
 
     const api = this.createApi(this.getNodeBaseUrl(node));
 
+    const token = this.encryptionService.decrypt(node.token) ?? node.token;
+    const password = this.encryptionService.decrypt(node.password) ?? node.password;
+
     if (node.authType === NodeAuthType.Token) {
-      if (!node.token) return null;
-      api.defaults.headers.common.Authorization = `Bearer ${node.token}`;
+      if (!token) return null;
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
       return api;
     }
 
-    if (!node.login || !node.password) return null;
+    if (!node.login || !password) return null;
 
     const res = await api.post<LoginResponse>('/login', {
       username: node.login,
-      password: node.password,
+      password,
     });
 
     if (!res.data?.success || !res.headers['set-cookie']) {

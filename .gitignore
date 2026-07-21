@@ -1,4 +1,40 @@
 checker/
-client/.env
-client/coverage/
 backups/
+
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Build output
+dist/
+build/
+
+# Coverage
+coverage/
+client/coverage/
+server/coverage/
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Runtime
+.pnpm-store
+.turbo
+*.tsbuildinfo

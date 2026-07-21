@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Box, TextField, Button, Typography, List, ListItem, ListItemText, IconButton, Paper, TablePagination, useTheme, useMediaQuery, Alert, Stack, CircularProgress, Divider, Link as MuiLink, Accordion, AccordionSummary, AccordionDetails, Snackbar, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, TextField, Button, Typography, List, ListItem, ListItemText, IconButton, Paper, TablePagination, useTheme, useMediaQuery, Alert, Stack, CircularProgress, Divider, Link as MuiLink, Accordion, AccordionSummary, AccordionDetails, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { Delete, Add, UploadFile, Remove, ExpandMore, Download } from '@mui/icons-material';
 import api from '../api';
 import { getApiErrorMessage, getApiErrorStatus } from '../utils/errorHandlers';
 import { Logger } from '../utils/logger';
+import { useToast } from '../components/ToastProvider';
 
 interface Domain { id: number; name: string; }
 interface ScanCapabilities {
@@ -71,8 +72,7 @@ export default function DomainsPage() {
   const [scanStatus, setScanStatus] = useState<ScanStatusResponse | null>(null);
   const [activeScanRunId, setActiveScanRunId] = useState<string | null>(null);
 
-  // Snackbar state for notifications
-  const [snackbar, setSnackbar] = useState({ open: false, type: 'success' as 'success' | 'error', message: '' });
+  const { showToast } = useToast();
 
   // Confirmation dialog state
   const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', onConfirm: () => {} });
@@ -206,7 +206,7 @@ export default function DomainsPage() {
       setTotalCount(data.total);
       if (data.total === 0 && !emptyDomainsNotified.current) {
         emptyDomainsNotified.current = true;
-        setSnackbar({ open: true, type: 'error', message: 'Создайте хотя бы один домен!' });
+        showToast('Создайте хотя бы один домен!', 'error');
       }
       if (data.total > 0) {
         emptyDomainsNotified.current = false;
@@ -413,10 +413,10 @@ export default function DomainsPage() {
           await api.delete('/domains/all');
           Logger.debug('All domains deleted', 'Domains');
           loadDomains();
-          setSnackbar({ open: true, type: 'success', message: 'Все домены удалены' });
+          showToast('Все домены удалены', 'success');
         } catch {
           Logger.error('Delete all failed', 'Domains');
-          setSnackbar({ open: true, type: 'error', message: 'Ошибка удаления' });
+          showToast('Ошибка удаления', 'error');
         }
       }
     });
@@ -435,10 +435,10 @@ export default function DomainsPage() {
 
       try {
         const { data } = await api.post('/domains/upload', { domains: lines });
-        setSnackbar({ open: true, type: 'success', message: `Успешно добавлено доменов: ${data.count}` });
+        showToast(`Успешно добавлено доменов: ${data.count}`, 'success');
         loadDomains();
       } catch {
-        setSnackbar({ open: true, type: 'error', message: 'Ошибка при загрузке списка' });
+        showToast('Ошибка при загрузке списка', 'error');
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
@@ -448,7 +448,7 @@ export default function DomainsPage() {
 
   const handleStartScan = async () => {
     if (!scanAddr.trim()) {
-      setSnackbar({ open: true, type: 'error', message: 'Укажите IP/домен для сканирования' });
+      showToast('Укажите IP/домен для сканирования', 'error');
       return;
     }
 
@@ -513,11 +513,11 @@ export default function DomainsPage() {
       Logger.debug(`Importing ${found.length} scanned domains`, 'Domains');
       const { data } = await api.post('/domains/upload', { domains: found });
       Logger.debug(`Imported ${data.count} new domains`, 'Domains');
-      setSnackbar({ open: true, type: 'success', message: `Скан завершен. Добавлено новых доменов: ${data.count}` });
+      showToast(`Скан завершен. Добавлено новых доменов: ${data.count}`, 'success');
       loadDomains();
     } catch {
       Logger.error('Import failed', 'Domains');
-      setSnackbar({ open: true, type: 'error', message: 'Ошибка импорта найденных доменов' });
+      showToast('Ошибка импорта найденных доменов', 'error');
     }
   };
 
@@ -568,7 +568,7 @@ export default function DomainsPage() {
       if (names.length === 0) return;
       downloadDomainsAsTxt(`sni-whitelist-${getExportTimestamp()}.txt`, names);
     } catch {
-      setSnackbar({ open: true, type: 'error', message: 'Ошибка экспорта списка' });
+      showToast('Ошибка экспорта списка', 'error');
     }
   };
 
@@ -838,20 +838,7 @@ export default function DomainsPage() {
         </Paper>
       </Paper>
 
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
-          severity={snackbar.type}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+
 
       <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ ...confirmDialog, open: false })}>
         <DialogTitle>Подтверждение действия</DialogTitle>

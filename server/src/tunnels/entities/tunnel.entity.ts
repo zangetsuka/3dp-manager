@@ -41,4 +41,7 @@ export class Tunnel {
 
   @Column({ default: false })
   isInstalled: boolean;
+
+  @Column({ nullable: true })
+  hostKeyFingerprint: string;
 }

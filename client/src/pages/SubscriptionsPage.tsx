@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Checkbox,
@@ -18,15 +17,8 @@ import {
   ListItemText,
   Menu,
   MenuItem,
-  Paper,
   Select,
-  Snackbar,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -47,11 +39,13 @@ import {
   Refresh,
   Remove,
 } from '@mui/icons-material';
+import { EnhancedDataGrid, type GridColDef } from '../components/EnhancedDataGrid';
 import api from '../api';
 import { copyToClipboard } from '../utils/copyToClipboard';
 import { Logger } from '../utils/logger';
 import type { NodeRecord } from '../types/node';
 import { FlagOptionLabel } from '../utils/flags';
+import { useToast } from '../components/ToastProvider';
 
 interface Subscription {
   id: string;
@@ -137,11 +131,7 @@ export default function SubscriptionsPage() {
     rotation_status: 'active',
     last_rotation_timestamp: '',
   });
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    type: 'success' as 'success' | 'error',
-    message: '',
-  });
+  const { showToast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     title: '',
@@ -237,11 +227,11 @@ export default function SubscriptionsPage() {
 
   const handleOpenCreate = () => {
     if (nodes.length === 0) {
-      setSnackbar({ open: true, type: 'error', message: 'Создайте хотя бы одну ноду!' });
+      showToast('Создайте хотя бы одну ноду!', 'error');
       return;
     }
     if (domains.length === 0) {
-      setSnackbar({ open: true, type: 'error', message: 'Создайте хотя бы один домен!' });
+      showToast('Создайте хотя бы один домен!', 'error');
       return;
     }
 
@@ -371,15 +361,11 @@ export default function SubscriptionsPage() {
     setPortErrors(nextPortErrors);
 
     if (Object.keys(nextPortErrors).length > 0) {
-      setSnackbar({
-        open: true,
-        type: 'error',
-        message: 'Пожалуйста, исправьте ошибки с портами',
-      });
+      showToast('Пожалуйста, исправьте ошибки с портами', 'error');
       return;
     }
     if (!name.trim()) {
-      setSnackbar({ open: true, type: 'error', message: 'Введите имя подписки' });
+      showToast('Введите имя подписки', 'error');
       return;
     }
 
@@ -419,16 +405,12 @@ export default function SubscriptionsPage() {
       }
       setOpen(false);
       loadSubs();
-      setSnackbar({
-        open: true,
-        type: 'success',
-        message: editingId ? 'Подписка обновлена' : 'Подписка создана',
-      });
+      showToast(editingId ? 'Подписка обновлена' : 'Подписка создана', 'success');
     } catch (error: unknown) {
       const message =
         (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         'Произошла ошибка при сохранении';
-      setSnackbar({ open: true, type: 'error', message });
+      showToast(message, 'error');
     }
   };
 
@@ -441,7 +423,7 @@ export default function SubscriptionsPage() {
       onConfirm: async () => {
         await api.delete(`/subscriptions/${id}`);
         loadSubs();
-        setSnackbar({ open: true, type: 'success', message: 'Подписка удалена' });
+        showToast('Подписка удалена', 'success');
       },
     });
   };
@@ -457,16 +439,12 @@ export default function SubscriptionsPage() {
           sub.id === subscriptionId ? { ...sub, isAutoRotationEnabled: enabled } : sub,
         ),
       );
-      setSnackbar({
-        open: true,
-        type: 'success',
-        message: enabled ? 'Авторотация включена' : 'Авторотация выключена',
-      });
+      showToast(enabled ? 'Авторотация включена' : 'Авторотация выключена', 'success');
     } catch (error: unknown) {
       const message =
         (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         'Ошибка обновления';
-      setSnackbar({ open: true, type: 'error', message });
+      showToast(message, 'error');
       loadSubs();
     }
   };
@@ -479,11 +457,7 @@ export default function SubscriptionsPage() {
       confirmColor: 'primary',
       onConfirm: async () => {
         const res = await api.post(`/rotation/rotate-one/${sub.id}`);
-        setSnackbar({
-          open: true,
-          type: res.data?.success ? 'success' : 'error',
-          message: res.data?.message || 'Ротация выполнена',
-        });
+        showToast(res.data?.message || 'Ротация выполнена', res.data?.success ? 'success' : 'error');
         loadSubs();
       },
     });
@@ -498,25 +472,17 @@ export default function SubscriptionsPage() {
     const nextStatus = rotationSettings.rotation_status === 'stopped' ? 'active' : 'stopped';
     const nextSettings = { ...rotationSettings, rotation_status: nextStatus };
     await saveRotationSettings(nextSettings);
-    setSnackbar({
-      open: true,
-      type: 'success',
-      message: nextStatus === 'active' ? 'Ротация включена' : 'Ротация остановлена',
-    });
+    showToast(nextStatus === 'active' ? 'Ротация включена' : 'Ротация остановлена', 'success');
   };
 
   const saveRotationInterval = async () => {
     const interval = parseInt(rotationSettings.rotation_interval, 10);
     if (Number.isNaN(interval) || interval < 10) {
-      setSnackbar({
-        open: true,
-        type: 'error',
-        message: 'Минимальный интервал ротации - 10 минут',
-      });
+      showToast('Минимальный интервал ротации - 10 минут', 'error');
       return;
     }
     await saveRotationSettings(rotationSettings);
-    setSnackbar({ open: true, type: 'success', message: 'Интервал ротации сохранен' });
+    showToast('Интервал ротации сохранен', 'success');
   };
 
   const rotateAllNow = () => {
@@ -529,11 +495,7 @@ export default function SubscriptionsPage() {
         try {
           setRotationLoading(true);
           const { data } = await api.post('/rotation/rotate-all');
-          setSnackbar({
-            open: true,
-            type: data?.success ? 'success' : 'error',
-            message: data?.message || 'Ротация завершена',
-          });
+          showToast(data?.message || 'Ротация завершена', data?.success ? 'success' : 'error');
           loadSubs();
         } finally {
           setRotationLoading(false);
@@ -571,17 +533,13 @@ export default function SubscriptionsPage() {
 
   const handleCopyLink = async (uuid: string) => {
     await copyToClipboard(getSubscriptionUrl(uuid));
-    setSnackbar({ open: true, type: 'success', message: 'Ссылка на подписку скопирована' });
+    showToast('Ссылка на подписку скопирована', 'success');
   };
 
   const handleGenerateCreatedSubscription = async () => {
     if (!createdSubscriptionId) return;
     const res = await api.post(`/rotation/rotate-one/${createdSubscriptionId}`);
-    setSnackbar({
-      open: true,
-      type: res.data?.success ? 'success' : 'error',
-      message: res.data?.message || 'Ротация выполнена',
-    });
+    showToast(res.data?.message || 'Ротация выполнена', res.data?.success ? 'success' : 'error');
     setCreatedSubscriptionId(null);
     loadSubs();
   };
@@ -595,6 +553,58 @@ export default function SubscriptionsPage() {
     setMenuAnchorEl(null);
     setActiveSub(null);
   };
+
+  const columns: GridColDef[] = [
+    { field: 'name', headerName: 'Имя', width: 250,
+      renderCell: (params) => <Typography fontWeight={700}>{params.row.name}</Typography>,
+    },
+    {
+      field: 'uuid',
+      headerName: 'UUID',
+      width: 280,
+      renderCell: (params) => <Typography sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>{params.row.uuid}</Typography>,
+    },
+    {
+      field: 'inboundCount',
+      headerName: 'Инбаунды',
+      width: 120,
+      valueGetter: (_value, row) => row.inbounds?.length || 0,
+    },
+    {
+      field: 'isAutoRotationEnabled',
+      headerName: 'Авторотация',
+      width: 130,
+      renderCell: (params) => (
+        <Checkbox
+          checked={params.row.isAutoRotationEnabled ?? true}
+          onChange={(e) => handleToggleAutoRotation(params.row.id, e.target.checked)}
+          color="primary"
+        />
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: 'Действия',
+      width: isMobile ? 60 : 160,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <Box>
+          {!isMobile && (
+            <>
+              <IconButton color="primary" onClick={() => handleCopyLink(params.row.uuid)} title="Копировать ссылку">
+                <ContentCopy />
+              </IconButton>
+              <IconButton color="primary" onClick={() => window.open(getSubscriptionUrl(params.row.uuid), '_blank')} title="Открыть подписку">
+                <OpenInNew />
+              </IconButton>
+            </>
+          )}
+          <IconButton onClick={(e) => openActionMenuFor(e, params.row)}><MoreVert /></IconButton>
+        </Box>
+      ),
+    },
+  ];
 
   return (
     <Box>
@@ -646,53 +656,13 @@ export default function SubscriptionsPage() {
         </Stack>
       </Paper>
 
-      <Paper sx={{ overflowX: 'auto' }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Имя</TableCell>
-              <TableCell>UUID</TableCell>
-              <TableCell>Инбаунды</TableCell>
-              <TableCell>Авторотация</TableCell>
-              <TableCell align="right">Действия</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {subs.map((sub) => (
-              <TableRow key={sub.id}>
-                <TableCell sx={{ fontWeight: 700 }}>{sub.name}</TableCell>
-                <TableCell sx={{ fontFamily: 'monospace' }}>{sub.uuid}</TableCell>
-                <TableCell>{sub.inbounds?.length || 0}</TableCell>
-                <TableCell>
-                  <Checkbox
-                    checked={sub.isAutoRotationEnabled ?? true}
-                    onChange={(e) => handleToggleAutoRotation(sub.id, e.target.checked)}
-                    color="primary"
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  {!isMobile && (
-                    <>
-                      <IconButton color="primary" onClick={() => handleCopyLink(sub.uuid)} title="Копировать ссылку">
-                        <ContentCopy />
-                      </IconButton>
-                      <IconButton color="primary" onClick={() => window.open(getSubscriptionUrl(sub.uuid), '_blank')} title="Открыть подписку">
-                        <OpenInNew />
-                      </IconButton>
-                    </>
-                  )}
-                  <IconButton onClick={(e) => openActionMenuFor(e, sub)}><MoreVert /></IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {subs.length === 0 && (
-          <Typography sx={{ p: 2 }} color="textSecondary" textAlign="center">
-            Нет подписок
-          </Typography>
-        )}
-      </Paper>
+      <Box sx={{ height: 600, width: '100%' }}>
+        <EnhancedDataGrid
+          rows={subs}
+          columns={columns}
+          getRowId={(row) => row.id}
+        />
+      </Box>
 
       <Menu anchorEl={menuAnchorEl} open={openActionMenu} onClose={closeActionMenu}>
         {isMobile && activeSub && <MenuItem onClick={() => handleCopyLink(activeSub.uuid)}><ListItemIcon><ContentCopy fontSize="small" color="primary" /></ListItemIcon><ListItemText>Копировать ссылку</ListItemText></MenuItem>}
@@ -853,11 +823,7 @@ export default function SubscriptionsPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.type} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
+
     </Box>
   );
 }

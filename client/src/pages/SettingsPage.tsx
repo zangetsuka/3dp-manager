@@ -1,28 +1,23 @@
 import { type ChangeEvent, useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Divider,
   Paper,
-  Snackbar,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import api from '../api';
 import { Logger } from '../utils/logger';
+import { useToast } from '../components/ToastProvider';
 
 export default function SettingsPage() {
   const [adminProfile, setAdminProfile] = useState({
     login: '',
     password: '',
   });
-  const [message, setMessage] = useState({
-    open: false,
-    type: 'success' as 'success' | 'error',
-    text: '',
-  });
+  const { showToast } = useToast();
 
   const loadProfile = useCallback(async () => {
     try {
@@ -47,17 +42,17 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!adminProfile.login.trim()) {
-      setMessage({ open: true, type: 'error', text: 'Login is required' });
+      showToast('Login is required', 'error');
       return;
     }
 
     try {
       await api.post('/auth/update-profile', adminProfile);
       setAdminProfile((prev) => ({ ...prev, password: '' }));
-      setMessage({ open: true, type: 'success', text: 'Profile updated' });
+      showToast('Profile updated', 'success');
     } catch (error) {
       Logger.error('Update profile error', 'Settings', error);
-      setMessage({ open: true, type: 'error', text: 'Failed to update profile' });
+      showToast('Failed to update profile', 'error');
     }
   };
 
@@ -93,13 +88,7 @@ export default function SettingsPage() {
         </Stack>
       </Paper>
 
-      <Snackbar
-        open={message.open}
-        autoHideDuration={5000}
-        onClose={() => setMessage({ ...message, open: false })}
-      >
-        <Alert severity={message.type}>{message.text}</Alert>
-      </Snackbar>
+
     </Box>
   );
 }

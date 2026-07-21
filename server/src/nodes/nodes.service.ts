@@ -8,6 +8,8 @@ import { Repository } from 'typeorm';
 import { CreateNodeDto, UpdateNodeDto } from './dto/node.dto';
 import { Node, NodeAuthType, NodeProtocol } from './entities/node.entity';
 import { XuiService } from '../xui/xui.service';
+import { EncryptionService } from '../encryption/encryption.service';
+import { AuditService } from '../audit/audit.service';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { Tunnel } from '../tunnels/entities/tunnel.entity';
 import { Inbound } from '../inbounds/entities/inbound.entity';
@@ -37,6 +39,8 @@ export class NodesService {
     @InjectRepository(Inbound)
     private readonly inboundsRepo: Repository<Inbound>,
     private readonly xuiService: XuiService,
+    private readonly encryptionService: EncryptionService,
+    private readonly audit: AuditService,
   ) {}
 
   findAll() {
@@ -54,17 +58,24 @@ export class NodesService {
     if (!node) {
       throw new NotFoundException('Node not found');
     }
+    return node;
+  }
 
+  private decryptNodeSecrets(node: Node): Node {
+    node.password = this.encryptionService.decrypt(node.password) ?? node.password;
+    node.token = this.encryptionService.decrypt(node.token) ?? node.token;
     return node;
   }
 
   async getDefaultNode() {
-    return this.nodesRepo
+    const node = await this.nodesRepo
       .createQueryBuilder('node')
       .addSelect('node.password')
       .addSelect('node.token')
       .where('node.isMain = :isMain', { isMain: true })
       .getOne();
+
+    return node ? this.decryptNodeSecrets(node) : node;
   }
 
   async create(dto: CreateNodeDto) {
@@ -91,7 +102,11 @@ export class NodesService {
       await this.clearMainNode();
     }
 
-    return this.nodesRepo.save(node);
+    if (node.password) node.password = this.encryptionService.encrypt(node.password) ?? node.password;
+    if (node.token) node.token = this.encryptionService.encrypt(node.token) ?? node.token;
+    const saved = await this.nodesRepo.save(node);
+    await this.audit.log({ action: 'CREATE', entityType: 'node', entityId: saved.id, detail: `Created node: ${saved.name}` });
+    return saved;
   }
 
   async update(id: string, dto: UpdateNodeDto) {
@@ -113,7 +128,23 @@ export class NodesService {
       }
     }
 
+    const oldPassword = node.password;
+    const oldToken = node.token;
+
     Object.assign(node, dto);
+
+    if (dto.password) {
+      node.password = this.encryptionService.encrypt(dto.password) ?? dto.password;
+    } else {
+      node.password = oldPassword;
+    }
+
+    if (dto.token) {
+      node.token = this.encryptionService.encrypt(dto.token) ?? dto.token;
+    } else {
+      node.token = oldToken;
+    }
+
     if (dto.url) {
       node.url = this.normalizeUrl(dto.url);
       const resolved = await this.resolveNodeLocation(
@@ -138,7 +169,9 @@ export class NodesService {
       node.isMain = true;
     }
 
-    return this.nodesRepo.save(node);
+    const saved = await this.nodesRepo.save(node);
+    await this.audit.log({ action: 'UPDATE', entityType: 'node', entityId: saved.id, detail: `Updated node: ${saved.name}` });
+    return saved;
   }
 
   async remove(id: string) {
@@ -147,6 +180,7 @@ export class NodesService {
 
     await this.cleanupNodeDependencies(node, nodeCount === 1);
     await this.nodesRepo.remove(node);
+    await this.audit.log({ action: 'DELETE', entityType: 'node', entityId: id, detail: `Deleted node: ${node.name}` });
 
     const main = await this.getDefaultNode();
     if (!main) {
@@ -229,6 +263,8 @@ export class NodesService {
     return this.nodesRepo.save(node);
   }
 
+  async checkPayload(dto: CreateNodeDto) {
+
   async checkConnection(id: string) {
     const node = await this.findOneWithSecrets(id);
     const status = await this.xuiService.checkNodeConnection(node);
@@ -264,33 +300,31 @@ export class NodesService {
         continue;
       }
 
-      synced.push(
-        await this.nodesRepo.save(
-          this.nodesRepo.create({
-            name: item.name || item.host,
-            url,
-            host: item.host,
-            domain: getDomainFromHost(item.host),
-            port: item.port,
-            ip: await this.resolveIp(item.host),
-            flag: (
-              await this.lookupGeo(await this.resolveIp(item.host))
-            )?.flag,
-            protocol:
-              item.protocol === NodeProtocol.Http
-                ? NodeProtocol.Http
-                : NodeProtocol.Https,
-            authType: main.authType,
-            login: main.login,
-            password: main.password,
-            token: main.token,
-            version: item.version,
-            isMain: false,
-          }),
-        ),
-      );
+      const syncedNode = this.nodesRepo.create({
+        name: item.name || item.host,
+        url,
+        host: item.host,
+        domain: getDomainFromHost(item.host),
+        port: item.port,
+        ip: await this.resolveIp(item.host),
+        flag: (
+          await this.lookupGeo(await this.resolveIp(item.host))
+        )?.flag,
+        protocol:
+          item.protocol === NodeProtocol.Http
+            ? NodeProtocol.Http
+            : NodeProtocol.Https,
+        authType: main.authType,
+        login: main.login,
+        password: this.encryptionService.encrypt(main.password) ?? main.password,
+        token: this.encryptionService.encrypt(main.token) ?? main.token,
+        version: item.version,
+        isMain: false,
+      });
+      synced.push(await this.nodesRepo.save(syncedNode));
     }
 
+    await this.audit.log({ action: 'SYNC', entityType: 'node', detail: `Synced ${synced.length} nodes from main` });
     return { success: true, count: synced.length, nodes: synced };
   }
 
@@ -401,7 +435,9 @@ export class NodesService {
     };
 
     try {
-      const res = await fetch(`https://ipwho.is/${ip}`);
+      const res = await fetch(`https://ipwho.is/${ip}`, {
+        signal: AbortSignal.timeout(5000),
+      });
       const data = (await res.json()) as {
         success?: boolean;
         country?: string;
@@ -415,7 +451,9 @@ export class NodesService {
     }
 
     try {
-      const res = await fetch(`http://ip-api.com/json/${ip}`);
+      const res = await fetch(`http://ip-api.com/json/${ip}`, {
+        signal: AbortSignal.timeout(5000),
+      });
       const data = (await res.json()) as {
         status?: string;
         country?: string;

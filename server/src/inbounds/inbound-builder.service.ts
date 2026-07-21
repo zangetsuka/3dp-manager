@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
@@ -10,6 +10,7 @@ import {
 
 @Injectable()
 export class InboundBuilderService {
+  protected readonly logger = new Logger(InboundBuilderService.name);
   private flag = process.env.COUNTRY_FLAG ?? '%F0%9F%92%AF';
 
   buildVlessRealityTcp(params: {
@@ -760,10 +761,10 @@ export class InboundBuilderService {
         const listenMatch = fileContent.match(/listen:\s*['"]?:(\d+)['"]?/);
         if (listenMatch) port = parseInt(listenMatch[1], 10);
       } else {
-        console.warn(`Конфиг Hysteria2 не найден по пути: ${configPath}`);
+        this.logger.warn(`Конфиг Hysteria2 не найден по пути: ${configPath}`);
       }
     } catch (e) {
-      console.error('Ошибка чтения конфига Hysteria2', e);
+      this.logger.error('Ошибка чтения конфига Hysteria2', e as Error);
     }
 
     const params = new URLSearchParams();

@@ -5,6 +5,7 @@ import { SubscriptionsController } from './subscriptions.controller';
 import { Subscription } from './entities/subscription.entity';
 import { Inbound } from '../inbounds/entities/inbound.entity';
 import { XuiModule } from '../xui/xui.module';
+import { AuditModule } from '../audit/audit.module';
 import { Node } from '../nodes/entities/node.entity';
 import { Tunnel } from '../tunnels/entities/tunnel.entity';
 
@@ -12,6 +13,7 @@ import { Tunnel } from '../tunnels/entities/tunnel.entity';
   imports: [
     TypeOrmModule.forFeature([Subscription, Inbound, Node, Tunnel]),
     XuiModule,
+    AuditModule,
   ],
   controllers: [SubscriptionsController],
   providers: [SubscriptionsService],

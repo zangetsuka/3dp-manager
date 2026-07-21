@@ -17,6 +17,7 @@ import { useState } from 'react';
 import Header from './Header';
 import Footer from './Footer';
 import SecurityWarning from './SecurityWarning';
+import { JobProgressBar } from './JobProgressBar';
 import { useSecureConnection } from '../utils/useSecureConnection';
 
 const drawerWidth = 240;
@@ -93,6 +94,7 @@ export default function Layout() {
       >
         <Toolbar />
         {!isSecure && <SecurityWarning />}
+        <JobProgressBar />
         <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 } }}>
           <Outlet />
         </Box>

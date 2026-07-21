@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Subscription } from './entities/subscription.entity';
 import { XuiService } from '../xui/xui.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,6 +21,7 @@ export class SubscriptionsService {
     @InjectRepository(Tunnel)
     private tunnelRepo: Repository<Tunnel>,
     private xuiService: XuiService,
+    private readonly audit: AuditService,
   ) {}
 
   findAll() {
@@ -40,7 +42,9 @@ export class SubscriptionsService {
       relayServer: await this.resolveRelay(dto.relayServerId),
     });
 
-    return this.subRepo.save(sub);
+    const saved = await this.subRepo.save(sub);
+    await this.audit.log({ action: 'CREATE', entityType: 'subscription', entityId: saved.id, detail: `Created subscription: ${saved.name}` });
+    return saved;
   }
 
   async update(id: string, dto: UpdateSubscriptionDto) {
@@ -77,7 +81,9 @@ export class SubscriptionsService {
       sub.relayServerId = dto.relayServerId;
     }
 
-    return this.subRepo.save(sub);
+    const saved = await this.subRepo.save(sub);
+    await this.audit.log({ action: 'UPDATE', entityType: 'subscription', entityId: id, detail: `Updated subscription: ${saved.name}` });
+    return saved;
   }
 
   async remove(id: string) {
@@ -104,7 +110,8 @@ export class SubscriptionsService {
       }
     }
 
-    return this.subRepo.remove(sub);
+    await this.subRepo.remove(sub);
+    await this.audit.log({ action: 'DELETE', entityType: 'subscription', entityId: id, detail: `Deleted subscription: ${sub.name}` });
   }
 
   private async resolveNode(nodeId?: string | null) {

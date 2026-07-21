@@ -7,6 +7,16 @@ set -euo pipefail
 PROJECT_DIR="/opt/3dp-manager"
 DOCKER_USER="denpiligrim"
 DOCKER_TAG="main"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version=*) DOCKER_TAG="${1#*=}"; shift ;;
+    --version) DOCKER_TAG="$2"; shift 2 ;;
+    --force-reset) FORCE_RESET=true; shift ;;
+    *) shift ;;
+  esac
+done
+
 IMAGE_SERVER="ghcr.io/${DOCKER_USER}/3dp-manager-server:${DOCKER_TAG}"
 IMAGE_CLIENT="ghcr.io/${DOCKER_USER}/3dp-manager-client:${DOCKER_TAG}"
 
@@ -96,24 +106,42 @@ get_random_port() {
   done
 }
 
+backup_database() {
+  local backup_dir="${PROJECT_DIR}/backups"
+  mkdir -p "$backup_dir"
+  local backup_file="$backup_dir/pre-upgrade-$(date +%Y%m%d-%H%M%S).sql.gz"
+  log "Создание backup БД: $backup_file"
+  docker exec 3dp-postgres sh -c \
+    'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' 2>/dev/null | gzip > "$backup_file" || true
+  if [[ -s "$backup_file" ]]; then
+    chmod 600 "$backup_file"
+    log "Backup создан: $backup_file"
+  else
+    warn "Backup не создан (БД могла быть не запущена)"
+    rm -f "$backup_file"
+  fi
+}
+
 cleanup_previous_install_data() {
-  log "Checking for previous 3dp-manager installation data..."
+  log "Checking for previous 3dp-manager installation..."
 
   if [[ -f docker-compose.yml ]]; then
-    warn "Existing docker-compose.yml found. Stopping previous installation and removing its volumes so newly generated credentials are used."
-    "${COMPOSE_CMD[@]}" down --volumes --remove-orphans || true
+    log "Existing installation found. Creating backup before upgrade..."
+    backup_database
+    log "Stopping old containers (data volume preserved)..."
+    "${COMPOSE_CMD[@]}" down --remove-orphans || true
   else
-    warn "docker-compose.yml not found. Removing known 3dp-manager containers if they still exist."
+    docker rm -f 3dp-postgres 3dp-backend 3dp-frontend >/dev/null 2>&1 || true
   fi
 
-  docker rm -f 3dp-postgres 3dp-backend 3dp-frontend >/dev/null 2>&1 || true
-
-  for volume in 3dp-manager_pg_data 3dpmanager_pg_data; do
-    if docker volume inspect "$volume" >/dev/null 2>&1; then
-      warn "Removing stale Postgres volume: $volume"
-      docker volume rm "$volume" >/dev/null 2>&1 || true
-    fi
-  done
+  if [[ "${FORCE_RESET:-false}" == "true" ]]; then
+    warn "FORCE_RESET is set. Removing all 3dp-manager volumes..."
+    for volume in 3dp-manager_pg_data 3dpmanager_pg_data; do
+      if docker volume inspect "$volume" >/dev/null 2>&1; then
+        docker volume rm "$volume" >/dev/null 2>&1 || true
+      fi
+    done
+  fi
 }
 
 #################################
@@ -210,6 +238,17 @@ mkdir -p "$PROJECT_DIR/client"
 
 cd "$PROJECT_DIR"
 cleanup_previous_install_data
+
+# preserve existing credentials on reinstall
+if [[ -f server/.env ]]; then
+  source server/.env 2>/dev/null || true
+  DB_PASS="${DB_PASS:-$POSTGRES_PASSWORD}"
+  JWT_SECRET="${JWT_SECRET:-$JWT_SECRET}"
+  ADMIN_USER="${ADMIN_USER:-$ADMIN_LOGIN}"
+  ADMIN_PASS="${ADMIN_PASS:-$ADMIN_PASSWORD}"
+  MASTER_KEY="${MASTER_KEY:-$MASTER_KEY}"
+  log "Existing credentials loaded from server/.env"
+fi
 
 #################################
 # СБОР ДАННЫХ: SSL / HTTPS
@@ -380,12 +419,16 @@ log "Сгенерированы секретные ключи для БД и JWT
 #################################
 # ГЕНЕРАЦИЯ ФАЙЛОВ DOCKER
 #################################
+MASTER_KEY=$(openssl rand -base64 24)
 cat > server/.env <<EOF
 DB_HOST=localhost
 DB_PORT=5432
 DB_USERNAME=admin
 DB_PASSWORD=${DB_PASS}
 DB_NAME=3dp_manager
+DB_SYNCHRONIZE=false
+DB_MIGRATIONS_RUN=true
+MASTER_KEY=${MASTER_KEY}
 ADMIN_LOGIN=${ADMIN_USER}
 ADMIN_PASSWORD=${ADMIN_PASS}
 PORT=3100
@@ -463,15 +506,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: admin
       DB_PASSWORD: ${DB_PASS}
       DB_NAME: 3dp_manager
-      DB_SYNCHRONIZE: "true"
-      DB_MIGRATIONS_RUN: "false"
+      DB_SYNCHRONIZE: "false"
+      DB_MIGRATIONS_RUN: "true"
       JWT_SECRET: ${JWT_SECRET}
+      MASTER_KEY: ${MASTER_KEY}
       ADMIN_LOGIN: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASS}
       PORT: 3100
@@ -483,7 +533,14 @@ services:
     container_name: 3dp-frontend
     restart: always
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
       - "${FINAL_PORT}:443"
     volumes:
@@ -576,15 +633,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: admin
       DB_PASSWORD: ${DB_PASS}
       DB_NAME: 3dp_manager
-      DB_SYNCHRONIZE: "true"
-      DB_MIGRATIONS_RUN: "false"
+      DB_SYNCHRONIZE: "false"
+      DB_MIGRATIONS_RUN: "true"
       JWT_SECRET: ${JWT_SECRET}
+      MASTER_KEY: ${MASTER_KEY}
       ADMIN_LOGIN: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASS}
       PORT: 3100
@@ -596,7 +660,14 @@ services:
     container_name: 3dp-frontend
     restart: always
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
       - "${FINAL_PORT}:80"
     volumes:

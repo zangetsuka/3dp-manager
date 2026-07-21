@@ -9,7 +9,8 @@ import { Domain } from '../domains/entities/domain.entity';
 import { Setting } from '../settings/entities/setting.entity';
 import { Node } from '../nodes/entities/node.entity';
 import { Tunnel } from '../tunnels/entities/tunnel.entity';
-
+import { AuditService } from '../audit/audit.service';
+import { JobService } from '../jobs/job.service';
 import { XuiService } from '../xui/xui.service';
 import { InboundBuilderService } from '../inbounds/inbound-builder.service';
 import { XuiInboundRaw } from '../inbounds/xui-inbound.types';
@@ -28,6 +29,8 @@ export class RotationService implements OnModuleInit {
     @InjectRepository(Tunnel) private tunnelRepo: Repository<Tunnel>,
     private xuiService: XuiService,
     private inboundBuilder: InboundBuilderService,
+    private readonly audit: AuditService,
+    private readonly jobService: JobService,
   ) {}
 
   async onModuleInit() {
@@ -129,44 +132,69 @@ export class RotationService implements OnModuleInit {
   }
 
   async performRotation() {
-    this.logger.debug('Запуск плановой ротации...');
+    const job = await this.jobService.create('rotation', { trigger: 'auto' });
+    await this.jobService.start(job.id);
 
-    const defaultNode = await this.getDefaultNode();
-    const isLoginSuccess = defaultNode ? true : await this.xuiService.login();
-    if (!isLoginSuccess) {
-      this.logger.error('Отмена ротации: Не удалось войти в панель 3x-ui');
-      return { success: false, message: 'Не удалось войти в панель 3x-ui' };
-    }
+    try {
+      this.logger.debug('Запуск плановой ротации...');
 
-    const subscriptions = await this.subRepo.find({
-      where: {
-        isEnabled: true,
-        isAutoRotationEnabled: true,
-      },
-      relations: ['inbounds', 'inbounds.node', 'node', 'relayServer'],
-    });
-    if (subscriptions.length === 0) {
-      return { success: false, message: 'Нет активных подписок для ротации' };
-    }
-
-    const domains = await this.domainRepo.find({ where: { isEnabled: true } });
-    if (domains.length === 0) {
-      this.logger.warn('Список доменов пуст! Ротация невозможна.');
-      return { success: false, message: 'Список доменов пуст!' };
-    }
-
-    for (const sub of subscriptions) {
-      const rotated = await this.rotateSubscription(sub, domains, defaultNode);
-      if (!rotated) {
-        return {
-          success: false,
-          message: 'Failed to delete old inbounds',
-        };
+      const defaultNode = await this.getDefaultNode();
+      const isLoginSuccess = defaultNode ? true : await this.xuiService.login();
+      if (!isLoginSuccess) {
+        await this.jobService.fail(job.id, 'Login to 3x-ui panel failed');
+        this.logger.error('Отмена ротации: Не удалось войти в панель 3x-ui');
+        return { success: false, message: 'Не удалось войти в панель 3x-ui' };
       }
-    }
 
-    this.logger.debug('Ротация завершена.');
-    return { success: true, message: 'Ротация успешно выполнена' };
+      const subscriptions = await this.subRepo.find({
+        where: {
+          isEnabled: true,
+          isAutoRotationEnabled: true,
+        },
+        relations: ['inbounds', 'inbounds.node', 'node', 'relayServer'],
+      });
+      if (subscriptions.length === 0) {
+        await this.jobService.complete(job.id, 'No active subscriptions');
+        return { success: false, message: 'Нет активных подписок для ротации' };
+      }
+
+      const domains = await this.domainRepo.find({ where: { isEnabled: true } });
+      if (domains.length === 0) {
+        await this.jobService.complete(job.id, 'Domain list is empty');
+        this.logger.warn('Список доменов пуст! Ротация невозможна.');
+        return { success: false, message: 'Список доменов пуст!' };
+      }
+
+      const snapshotMap: Record<string, Inbound[]> = {};
+      const total = subscriptions.length;
+      for (let i = 0; i < total; i++) {
+        const sub = subscriptions[i];
+        if (sub.inbounds?.length) {
+          const snapshot = sub.inbounds.map(inb => ({ ...inb }));
+          snapshotMap[sub.id] = snapshot;
+        }
+        const rotated = await this.rotateSubscription(sub, domains, defaultNode);
+        if (!rotated) {
+          await this.jobService.fail(job.id, `Failed to rotate subscription ${sub.id}`);
+          return {
+            success: false,
+            message: 'Failed to delete old inbounds',
+          };
+        }
+        await this.jobService.updateProgress(job.id, Math.round(((i + 1) / total) * 100));
+        await this.jobService.updateResult(job.id, JSON.stringify({ snapshot: snapshotMap }));
+      }
+
+      this.logger.debug('Ротация завершена.');
+      await this.audit.log({ action: 'COMPLETE', entityType: 'rotation', detail: `Auto rotation completed for ${subscriptions.length} subscriptions` });
+      await this.jobService.complete(job.id, `Rotated ${subscriptions.length} subscriptions`);
+      return { success: true, message: 'Ротация успешно выполнена' };
+    } catch (e) {
+      const error = e as Error;
+      this.logger.error(`Rotation error: ${error.message}`);
+      await this.jobService.fail(job.id, error.message);
+      return { success: false, message: error.message };
+    }
   }
 
   private async rotateSubscription(
@@ -441,44 +469,130 @@ export class RotationService implements OnModuleInit {
    * Ручная ротация одной подписки (независимо от флага isAutoRotationEnabled)
    */
   async rotateSingleSubscription(subscriptionId: string) {
-    this.logger.debug(`Запуск ручной ротации подписки: ${subscriptionId}`);
+    const job = await this.jobService.create('rotation', { trigger: 'manual', subscriptionId });
+    await this.jobService.start(job.id);
 
-    const sub = await this.subRepo.findOne({
-      where: { id: subscriptionId },
-      relations: ['inbounds', 'inbounds.node', 'node', 'relayServer'],
-    });
+    try {
+      this.logger.debug(`Запуск ручной ротации подписки: ${subscriptionId}`);
 
-    if (!sub) {
-      this.logger.warn(`Подписка не найдена: ${subscriptionId}`);
-      return {
-        success: false,
-        message: 'Подписка не найдена',
-      };
+      const sub = await this.subRepo.findOne({
+        where: { id: subscriptionId },
+        relations: ['inbounds', 'inbounds.node', 'node', 'relayServer'],
+      });
+
+      if (!sub) {
+        await this.jobService.fail(job.id, `Subscription not found: ${subscriptionId}`);
+        this.logger.warn(`Подписка не найдена: ${subscriptionId}`);
+        return { success: false, message: 'Подписка не найдена' };
+      }
+
+      const defaultNode = await this.getDefaultNode();
+      const isLoginSuccess = defaultNode ? true : await this.xuiService.login();
+      if (!isLoginSuccess) {
+        await this.jobService.fail(job.id, 'Login to 3x-ui panel failed');
+        this.logger.error('Отмена ротации: Не удалось войти в панель 3x-ui');
+        return { success: false, message: 'Не удалось войти в панель 3x-ui' };
+      }
+
+      const domains = await this.domainRepo.find({ where: { isEnabled: true } });
+      if (domains.length === 0) {
+        await this.jobService.complete(job.id, 'Domain list is empty');
+        this.logger.warn('Список доменов пуст! Ротация невозможна.');
+        return { success: false, message: 'Список доменов пуст!' };
+      }
+
+      const snapshot = sub.inbounds?.length ? sub.inbounds.map(inb => ({ ...inb })) : [];
+      const rotated = await this.rotateSubscription(sub, domains, defaultNode);
+      if (!rotated) {
+        await this.jobService.fail(job.id, 'Failed to delete old inbounds');
+        return { success: false, message: 'Failed to delete old inbounds' };
+      }
+
+      await this.jobService.updateResult(job.id, JSON.stringify({ snapshot: { [sub.id]: snapshot } }));
+      this.logger.debug(`Ручная ротация подписки ${subscriptionId} завершена.`);
+      await this.audit.log({ action: 'START', entityType: 'rotation', entityId: subscriptionId, detail: `Manual rotation started for subscription ${subscriptionId}` });
+      await this.jobService.complete(job.id, `Subscription ${subscriptionId} rotated`);
+      return { success: true, message: 'Ротация успешно выполнена' };
+    } catch (e) {
+      const error = e as Error;
+      this.logger.error(`Rotation error: ${error.message}`);
+      await this.jobService.fail(job.id, error.message);
+      return { success: false, message: error.message };
+    }
+  }
+
+  async rollbackRotation(jobId: number) {
+    const job = await this.jobService.findById(jobId);
+    if (!job || !job.result) {
+      return { success: false, message: 'Job not found or has no snapshot' };
     }
 
-    const defaultNode = await this.getDefaultNode();
-    const isLoginSuccess = defaultNode ? true : await this.xuiService.login();
-    if (!isLoginSuccess) {
-      this.logger.error('Отмена ротации: Не удалось войти в панель 3x-ui');
-      return { success: false, message: 'Не удалось войти в панель 3x-ui' };
+    const data = JSON.parse(job.result);
+    const snapshot: Record<string, Partial<Inbound>[]> = data.snapshot;
+    if (!snapshot || Object.keys(snapshot).length === 0) {
+      return { success: false, message: 'No snapshot data to rollback' };
     }
 
-    const domains = await this.domainRepo.find({ where: { isEnabled: true } });
-    if (domains.length === 0) {
-      this.logger.warn('Список доменов пуст! Ротация невозможна.');
-      return { success: false, message: 'Список доменов пуст!' };
-    }
+    const rollbackJob = await this.jobService.create('rotation', { rollbackOf: jobId });
+    await this.jobService.start(rollbackJob.id);
 
-    const rotated = await this.rotateSubscription(sub, domains, defaultNode);
-    if (!rotated) {
-      return {
-        success: false,
-        message: 'Failed to delete old inbounds',
-      };
-    }
+    try {
+      const defaultNode = await this.getDefaultNode();
+      const isLoginSuccess = defaultNode ? true : await this.xuiService.login();
+      if (!isLoginSuccess) {
+        await this.jobService.fail(rollbackJob.id, 'Login to 3x-ui panel failed');
+        return { success: false, message: 'Login to 3x-ui panel failed' };
+      }
 
-    this.logger.debug(`Ручная ротация подписки ${subscriptionId} завершена.`);
-    return { success: true, message: 'Ротация успешно выполнена' };
+      const subIds = Object.keys(snapshot);
+      for (let i = 0; i < subIds.length; i++) {
+        const subId = subIds[i];
+        const sub = await this.subRepo.findOne({
+          where: { id: subId },
+          relations: ['inbounds', 'inbounds.node'],
+        });
+        if (!sub) continue;
+
+        // Delete current inbounds
+        if (sub.inbounds?.length) {
+          for (const inbound of sub.inbounds) {
+            if (inbound.xuiId && inbound.xuiId > 0) {
+              await this.xuiService.deleteInbound(inbound.xuiId, await this.resolveInboundNode(inbound));
+            }
+            await this.inboundRepo.delete(inbound.id);
+          }
+        }
+
+        // Restore old inbounds
+        const oldInbounds = snapshot[subId];
+        for (const old of oldInbounds) {
+          const targetNode = old.nodeId
+            ? await this.nodeRepo.findOne({ where: { id: old.nodeId } })
+            : defaultNode;
+          const newInbound = this.inboundRepo.create({
+            xuiId: 0,
+            port: old.port || 0,
+            protocol: old.protocol || 'unknown',
+            remark: old.remark || '',
+            link: old.link || '',
+            subscription: sub,
+            node: targetNode,
+            relayServerId: old.relayServerId,
+          });
+          await this.inboundRepo.save(newInbound);
+        }
+
+        await this.jobService.updateProgress(rollbackJob.id, Math.round(((i + 1) / subIds.length) * 100));
+      }
+
+      await this.jobService.complete(rollbackJob.id, `Rolled back ${subIds.length} subscriptions`);
+      return { success: true, message: 'Rollback completed' };
+    } catch (e) {
+      const error = e as Error;
+      this.logger.error(`Rollback error: ${error.message}`);
+      await this.jobService.fail(rollbackJob.id, error.message);
+      return { success: false, message: error.message };
+    }
   }
 
   private async getDefaultNode() {

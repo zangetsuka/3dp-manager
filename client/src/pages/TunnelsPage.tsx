@@ -1,6 +1,5 @@
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -14,26 +13,21 @@ import {
   IconButton,
   InputLabel,
   MenuItem,
-  Paper,
   Radio,
   RadioGroup,
   Select,
-  Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Typography,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
 import { Add, CheckCircle, Delete, Dns, Error, Terminal } from '@mui/icons-material';
+import { EnhancedDataGrid, type GridColDef } from '../components/EnhancedDataGrid';
 import api from '../api';
 import { getApiErrorMessage } from '../utils/errorHandlers';
 import { Logger } from '../utils/logger';
 import type { NodeRecord } from '../types/node';
+import { useToast } from '../components/ToastProvider';
 
 interface Tunnel {
   id: number;
@@ -66,11 +60,7 @@ export default function TunnelsPage() {
   const [authMethod, setAuthMethod] = useState<'password' | 'key'>('password');
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    type: 'success' as 'success' | 'error',
-    message: '',
-  });
+  const { showToast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     title: '',
@@ -82,6 +72,64 @@ export default function TunnelsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const mainNode = useMemo(() => nodes.find((node) => node.isMain), [nodes]);
+
+  const columns: GridColDef[] = [
+    { field: 'name', headerName: 'Название', width: 200 },
+    {
+      field: 'nodeName',
+      headerName: 'Нода',
+      width: 200,
+      valueGetter: (_value, row) => row.node?.name || '-',
+    },
+    {
+      field: 'address',
+      headerName: 'Адрес',
+      width: 250,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Dns fontSize="small" color="action" />
+          {params.row.domain || params.row.ip}
+        </Box>
+      ),
+    },
+    {
+      field: 'status',
+      headerName: 'Статус',
+      width: 160,
+      renderCell: (params) =>
+        params.row.isInstalled ? (
+          <Chip icon={<CheckCircle />} label="Активен" color="success" size="small" variant="outlined" />
+        ) : (
+          <Chip icon={<Error />} label="Не установлен" color="warning" size="small" variant="outlined" />
+        ),
+    },
+    {
+      field: 'actions',
+      headerName: 'Действия',
+      width: 220,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <Box>
+          {!params.row.isInstalled && (
+            <Button
+              startIcon={loadingId === params.row.id ? <CircularProgress size={20} /> : <Terminal />}
+              disabled={loadingId !== null}
+              onClick={() => handleInstall(params.row.id)}
+              sx={{ mr: 1 }}
+              variant="outlined"
+              size="small"
+            >
+              Установить
+            </Button>
+          )}
+          <IconButton color="error" disabled={loadingId !== null} onClick={() => handleDelete(params.row)}>
+            <Delete />
+          </IconButton>
+        </Box>
+      ),
+    },
+  ];
 
   const loadData = useCallback(async () => {
     try {
@@ -139,7 +187,7 @@ export default function TunnelsPage() {
 
   const openCreate = () => {
     if (nodes.length === 0) {
-      setSnackbar({ open: true, type: 'error', message: 'Создайте хотя бы одну ноду!' });
+      showToast('Создайте хотя бы одну ноду!', 'error');
       return;
     }
     resetForm();
@@ -148,7 +196,7 @@ export default function TunnelsPage() {
 
   const handleCreate = async () => {
     if (!validateForm()) {
-      setSnackbar({ open: true, type: 'error', message: 'Исправьте ошибки в форме' });
+      showToast('Исправьте ошибки в форме', 'error');
       return;
     }
 
@@ -164,9 +212,9 @@ export default function TunnelsPage() {
       setOpen(false);
       resetForm();
       loadData();
-      setSnackbar({ open: true, type: 'success', message: 'Relay сервер добавлен' });
+      showToast('Relay сервер добавлен', 'success');
     } catch (error) {
-      setSnackbar({ open: true, type: 'error', message: getApiErrorMessage(error, 'Не удалось добавить relay сервер') });
+      showToast(getApiErrorMessage(error, 'Не удалось добавить relay сервер'), 'error');
     }
   };
 
@@ -180,10 +228,10 @@ export default function TunnelsPage() {
         setLoadingId(id);
         try {
           await api.post(`/tunnels/${id}/install`);
-          setSnackbar({ open: true, type: 'success', message: 'Перенаправление установлено' });
+          showToast('Перенаправление установлено', 'success');
           loadData();
         } catch (error) {
-          setSnackbar({ open: true, type: 'error', message: getApiErrorMessage(error, 'Ошибка установки') });
+          showToast(getApiErrorMessage(error, 'Ошибка установки'), 'error');
         } finally {
           setLoadingId(null);
         }
@@ -207,10 +255,10 @@ export default function TunnelsPage() {
         setLoadingId(tunnel.id);
         try {
           await api.delete(`/tunnels/${tunnel.id}`, { params: { deleteForwarding } });
-          setSnackbar({ open: true, type: 'success', message: 'Relay сервер удалён' });
+          showToast('Relay сервер удалён', 'success');
           loadData();
         } catch (error) {
-          setSnackbar({ open: true, type: 'error', message: getApiErrorMessage(error, 'Ошибка удаления') });
+          showToast(getApiErrorMessage(error, 'Ошибка удаления'), 'error');
         } finally {
           setLoadingId(null);
         }
@@ -226,64 +274,13 @@ export default function TunnelsPage() {
         
       </Box>
 
-      <Paper sx={{ overflowX: 'auto' }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Название</TableCell>
-              <TableCell>Нода</TableCell>
-              <TableCell>Адрес</TableCell>
-              <TableCell>Статус</TableCell>
-              <TableCell align="right">Действия</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {tunnels.map((tunnel) => (
-              <TableRow key={tunnel.id}>
-                <TableCell>{tunnel.name}</TableCell>
-                <TableCell>{tunnel.node?.name || '-'}</TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Dns fontSize="small" color="action" />
-                    {tunnel.domain || tunnel.ip}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  {tunnel.isInstalled ? (
-                    <Chip icon={<CheckCircle />} label="Активен" color="success" size="small" variant="outlined" />
-                  ) : (
-                    <Chip icon={<Error />} label="Не установлен" color="warning" size="small" variant="outlined" />
-                  )}
-                </TableCell>
-                <TableCell align="right">
-                  {!tunnel.isInstalled && (
-                    <Button
-                      startIcon={loadingId === tunnel.id ? <CircularProgress size={20} /> : <Terminal />}
-                      disabled={loadingId !== null}
-                      onClick={() => handleInstall(tunnel.id)}
-                      sx={{ mr: 1 }}
-                      variant="outlined"
-                      size="small"
-                    >
-                      Установить
-                    </Button>
-                  )}
-                  <IconButton color="error" disabled={loadingId !== null} onClick={() => handleDelete(tunnel)}>
-                    <Delete />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-            {tunnels.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ color: 'text.secondary' }}>
-                  Relay серверы не добавлены
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Paper>
+      <Box sx={{ height: 600, width: '100%' }}>
+        <EnhancedDataGrid
+          rows={tunnels}
+          columns={columns}
+          getRowId={(row) => row.id}
+        />
+      </Box>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Новый relay сервер</DialogTitle>
@@ -331,9 +328,7 @@ export default function TunnelsPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={snackbar.open} autoHideDuration={6000} onClose={() => setSnackbar({ ...snackbar, open: false })} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.type} sx={{ width: '100%' }}>{snackbar.message}</Alert>
-      </Snackbar>
+
     </Box>
   );
 }

@@ -18,12 +18,19 @@ services:
       context: ./server
       dockerfile: Dockerfile
     container_name: 3dp-backend-local
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USERNAME: admin
       DB_PASSWORD: admin
       DB_NAME: 3dp_manager
+      MASTER_KEY: localDevMasterKeyReplaceMe32Bytes!
       JWT_SECRET: localDevSecretKey12345678901234567890
       ADMIN_LOGIN: admin
       ADMIN_PASSWORD: admin
@@ -42,10 +49,17 @@ services:
       context: ./client
       dockerfile: Dockerfile
     container_name: 3dp-frontend-local
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - 3dp-local-network
 

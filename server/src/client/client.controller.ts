@@ -10,6 +10,7 @@ import {
   Query,
   Logger,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -22,6 +23,7 @@ import { Public } from '../auth/public.decorator';
 import { Tunnel } from 'src/tunnels/entities/tunnel.entity';
 import { generateSubscriptionHtmlWithQr } from './templates/subscription.template';
 
+@ApiTags('Subscriptions')
 @Controller()
 export class ClientController {
   private readonly logger = new Logger(ClientController.name);
@@ -36,6 +38,9 @@ export class ClientController {
 
   @Public()
   @Throttle({ default: { limit: 300, ttl: 60000 } })
+  @ApiOperation({ summary: 'Получить подписку', description: 'Получить конфигурацию подписки по UUID' })
+  @ApiResponse({ status: 200, description: 'Конфигурация подписки' })
+  @ApiResponse({ status: 404, description: 'Подписка не найдена' })
   @Get('bus/:uuid')
   async getSubscription(
     @Param('uuid') uuid: string,
@@ -95,6 +100,9 @@ export class ClientController {
 
   @Public()
   @Throttle({ default: { limit: 300, ttl: 60000 } })
+  @ApiOperation({ summary: 'Получить подписку через relay', description: 'Получить конфигурацию подписки через relay-сервер' })
+  @ApiResponse({ status: 200, description: 'Конфигурация подписки' })
+  @ApiResponse({ status: 404, description: 'Подписка или relay не найдены' })
   @Get('bus/:uuid/:tunnelId')
   async getRelaySubscription(
     @Param('uuid') uuid: string,

@@ -2,16 +2,19 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { AuthService } from './auth/auth.service';
-import { RequestMethod, Logger, LogLevel } from '@nestjs/common';
+import { RequestMethod, LogLevel } from '@nestjs/common';
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import cookieParser from 'cookie-parser';
 import { HttpExceptionFilter } from './client/client.exception-filter';
 import { ConfigService } from '@nestjs/config';
+import { JsonLogger } from './logger/json-logger.service';
+import { setupSwagger } from './swagger';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: new JsonLogger(),
+  });
   const configService = app.get(ConfigService);
-  const logger = new Logger('Bootstrap');
 
   // Настройка уровня логирования из переменной окружения
   const configuredLevel = configService.get<string>('LOG_LEVEL', 'error');
@@ -23,6 +26,8 @@ async function bootstrap() {
         : ['error', 'warn', 'log'];
 
   app.useLogger(logLevels);
+
+  const logger = new JsonLogger('Bootstrap');
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     const startedAt = Date.now();
@@ -72,6 +77,9 @@ async function bootstrap() {
     credentials: true,
   });
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  setupSwagger(app);
+
   app.setGlobalPrefix('api', {
     exclude: [
       { path: 'bus/:uuid', method: RequestMethod.GET },
