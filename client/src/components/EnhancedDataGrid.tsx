@@ -1,4 +1,5 @@
-import { DataGrid, type DataGridProps, type GridColDef, type GridValidRowModel, ruRU } from '@mui/x-data-grid';
+import { DataGrid, type DataGridProps, type GridColDef, type GridValidRowModel } from '@mui/x-data-grid';
+import { ruRU } from '@mui/x-data-grid/locales';
 import { Paper } from '@mui/material';
 
 const DEFAULT_PAGE_SIZE = 25;
