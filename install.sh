@@ -5,7 +5,7 @@ set -euo pipefail
 # КОНФИГУРАЦИЯ И ПЕРЕМЕННЫЕ
 #################################
 PROJECT_DIR="/opt/3dp-manager"
-DOCKER_USER="denpiligrim"
+DOCKER_USER="zangetsuka"
 DOCKER_TAG="main"
 
 while [[ $# -gt 0 ]]; do
@@ -16,7 +16,6 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
-
 IMAGE_SERVER="ghcr.io/${DOCKER_USER}/3dp-manager-server:${DOCKER_TAG}"
 IMAGE_CLIENT="ghcr.io/${DOCKER_USER}/3dp-manager-client:${DOCKER_TAG}"
 
