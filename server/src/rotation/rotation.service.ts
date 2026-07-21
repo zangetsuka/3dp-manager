@@ -269,45 +269,6 @@ export class RotationService implements OnModuleInit {
 
       let sni = '';
 
-      // === 1. Happ routing profile ===
-      if (type === 'happ-routing') {
-        const rawProfile = String(config.routingProfile || '').trim();
-        if (!rawProfile) {
-          this.logger.warn(`Happ routing profile is empty for subscription ${sub.id}`);
-          continue;
-        }
-
-        let link = rawProfile;
-        if (!/^happ:\/\/routing\/add\//i.test(rawProfile)) {
-          let payload = rawProfile;
-
-          // JSON is encoded as URL-safe base64. A pre-encoded base64/base64url
-          // payload is accepted as-is for compatibility with routing generators.
-          if (rawProfile.startsWith('{') || rawProfile.startsWith('[')) {
-            try {
-              payload = JSON.stringify(JSON.parse(rawProfile));
-            } catch {
-              this.logger.warn(`Invalid Happ routing JSON for subscription ${sub.id}`);
-              continue;
-            }
-            payload = Buffer.from(payload, 'utf8').toString('base64url');
-          }
-
-          link = `happ://routing/add/${payload}`;
-        }
-
-        const happInbound = this.inboundRepo.create({
-          xuiId: 0,
-          port: 0,
-          protocol: 'happ-routing',
-          remark: 'Happ routing profile',
-          link,
-          subscription: sub,
-        });
-        await this.inboundRepo.save(happInbound);
-        continue;
-      }
-
       // === 1. Обработка Custom ===
       if (type === 'custom') {
         const newInbound = this.inboundRepo.create({
@@ -325,7 +286,7 @@ export class RotationService implements OnModuleInit {
       }
 
       
-      // === 3. Обработка Hysteria2 ===
+      // === 2. Обработка Hysteria2 ===
       if (type === 'hysteria2-udp') {
         let port = 0;
         if (config.port === 'random' || !config.port) {
