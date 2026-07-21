@@ -19,6 +19,26 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * Audit logging must never make authentication unavailable.
+   * A missing/unmigrated audit table or a temporary DB error is reported,
+   * but the login result still follows the credential check.
+   */
+  private async safeAudit(params: {
+    action: string;
+    entityType?: string;
+    entityId?: string;
+    detail?: string;
+  }) {
+    try {
+      await this.audit.log(params);
+    } catch (error) {
+      this.logger.error(
+        `Audit write failed for ${params.action}: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
+  }
+
   async validateUser(
     login: string,
     pass: string,
@@ -44,11 +64,21 @@ export class AuthService {
 
     if (isMatch) {
       this.logger.debug('Пароль верный!');
-      await this.audit.log({ action: 'LOGIN', entityType: 'user', entityId: dbLogin.value, detail: 'Successful login' });
+      await this.safeAudit({
+          action: 'LOGIN',
+          entityType: 'user',
+          entityId: dbLogin.value,
+          detail: 'Successful login',
+        });
       return { login: dbLogin.value };
     } else {
       this.logger.warn('Пароль неверный.');
-      await this.audit.log({ action: 'LOGIN_FAILED', entityType: 'user', entityId: login, detail: 'Failed login attempt' });
+      await this.safeAudit({
+          action: 'LOGIN_FAILED',
+          entityType: 'user',
+          entityId: login,
+          detail: 'Failed login attempt',
+        });
       return null;
     }
   }

@@ -67,7 +67,7 @@ export class AuthController {
     });
 
     this.logger.debug(`Login response prepared for user: ${req.login}`);
-    return { success: true };
+    return { access_token };
   }
 
   @Public()
