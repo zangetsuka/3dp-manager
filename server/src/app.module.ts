@@ -27,6 +27,8 @@ import { Tunnel } from './tunnels/entities/tunnel.entity';
 import { SessionModule } from './session/session.module';
 import { Node } from './nodes/entities/node.entity';
 import { NodesModule } from './nodes/nodes.module';
+import { AuditLog } from './audit/audit.entity';
+import { Job } from './jobs/job.entity';
 import { AddNodesAndNodeRelations1765960000000 } from './migrations/1765960000000-add-nodes-and-node-relations';
 import { AddNodeIpFlagAndInboundLabels1770000000000 } from './migrations/1770000000000-add-node-ip-flag-and-inbound-labels';
 import { AddNodeDomain1770000000001 } from './migrations/1770000000001-add-node-domain';
@@ -50,7 +52,7 @@ import { InitialBaseTables1770000000002 } from './migrations/1770000000002-initi
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      entities: [Setting, Domain, Subscription, Inbound, Tunnel, Node],
+      entities: [Setting, Domain, Subscription, Inbound, Tunnel, Node, AuditLog, Job],
       migrations: [
         AddNodesAndNodeRelations1765960000000,
         AddNodeIpFlagAndInboundLabels1770000000000,
