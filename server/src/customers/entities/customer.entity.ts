@@ -20,25 +20,25 @@ export class Customer {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 160 })
+  @Column()
   name: string;
 
-  @Column({ length: 120, unique: true })
+  @Column({ unique: true })
   slug: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ nullable: true })
   email?: string;
 
-  @Column({ length: 64, nullable: true })
+  @Column({ name: 'telegram_id', length: 64, nullable: true })
   telegramId?: string;
 
   @Column({ length: 16, default: 'active' })
   status: CustomerStatus;
 
-  @Column({ type: 'bigint', nullable: true })
+  @Column({ name: 'traffic_limit', type: 'bigint', nullable: true })
   trafficLimit?: number;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt?: Date;
 
   @Column({ type: 'text', nullable: true })
@@ -47,9 +47,9 @@ export class Customer {
   @OneToMany(() => Subscription, (sub) => sub.customer)
   subscriptions: Subscription[];
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }

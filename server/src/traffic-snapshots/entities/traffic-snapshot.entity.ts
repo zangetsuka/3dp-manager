@@ -18,21 +18,21 @@ export class TrafficSnapshot {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: number;
 
-  @Column()
+  @Column({ name: 'binding_id' })
   bindingId: string;
 
   @ManyToOne(() => XuiClientBinding, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'binding_id' })
   binding: XuiClientBinding;
 
-  @Column()
+  @Column({ name: 'subscription_id' })
   subscriptionId: string;
 
   @ManyToOne(() => Subscription, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'subscription_id' })
   subscription: Subscription;
 
-  @Column({ nullable: true })
+  @Column({ name: 'customer_id', nullable: true })
   customerId?: string;
 
   @ManyToOne(() => Customer, { nullable: true, onDelete: 'SET NULL' })
@@ -48,9 +48,9 @@ export class TrafficSnapshot {
   @Column({ type: 'bigint', default: 0 })
   total: number;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'source_reset_at', type: 'timestamptz', nullable: true })
   sourceResetAt?: Date;
 
-  @Column({ type: 'timestamptz', default: () => 'now()' })
+  @Column({ name: 'collected_at', type: 'timestamptz', default: () => 'now()' })
   collectedAt: Date;
 }

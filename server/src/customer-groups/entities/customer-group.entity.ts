@@ -14,34 +14,34 @@ export class CustomerGroup {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 120 })
+  @Column()
   name: string;
 
-  @Column({ length: 120, unique: true })
+  @Column({ unique: true })
   slug: string;
 
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'default_routing_profile_id', nullable: true })
   defaultRoutingProfileId?: string;
 
   @ManyToOne(() => RoutingProfile, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'default_routing_profile_id' })
   defaultRoutingProfile?: RoutingProfile;
 
-  @Column({ type: 'bigint', nullable: true })
+  @Column({ name: 'default_traffic_limit', type: 'bigint', nullable: true })
   defaultTrafficLimit?: number;
 
-  @Column({ type: 'int', nullable: true })
+  @Column({ name: 'default_expiry_days', type: 'int', nullable: true })
   defaultExpiryDays?: number;
 
-  @Column({ default: true })
+  @Column({ name: 'default_auto_rotation', default: true })
   defaultAutoRotation: boolean;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }

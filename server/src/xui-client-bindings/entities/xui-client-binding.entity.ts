@@ -19,21 +19,21 @@ export class XuiClientBinding {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'subscription_id' })
   subscriptionId: string;
 
   @ManyToOne(() => Subscription, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'subscription_id' })
   subscription: Subscription;
 
-  @Column({ nullable: true })
+  @Column({ name: 'node_id', nullable: true })
   nodeId?: string;
 
   @ManyToOne(() => Node, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'node_id' })
   node?: Node;
 
-  @Column({ type: 'int', nullable: true })
+  @Column({ name: 'inbound_id', type: 'int', nullable: true })
   inboundId?: number;
 
   @ManyToOne(() => Inbound, { nullable: true, onDelete: 'SET NULL' })
@@ -43,29 +43,28 @@ export class XuiClientBinding {
   @Column({ length: 32 })
   protocol: string;
 
-  @Column({ type: 'int', nullable: true })
+  @Column({ name: 'xui_inbound_id', type: 'int', nullable: true })
   xuiInboundId?: number;
 
-  @Column({ length: 128 })
+  @Column({ name: 'xui_client_id', length: 128 })
   xuiClientId: string;
 
   @Index('ix_binding_email')
-  @Column({ length: 255 })
+  @Column({ name: 'xui_email', length: 255 })
   xuiEmail: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ name: 'xui_sub_id', length: 255, nullable: true })
   xuiSubId?: string;
 
-  @Column({ default: true })
+  @Column({ name: 'is_enabled', default: true })
   isEnabled: boolean;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
   lastSyncedAt?: Date;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
-
 }

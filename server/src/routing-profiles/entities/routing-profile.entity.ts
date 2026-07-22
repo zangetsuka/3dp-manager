@@ -17,16 +17,16 @@ export class RoutingProfile {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ length: 120 })
+  @Column()
   name: string;
 
-  @Column({ length: 120, unique: true })
+  @Column({ unique: true })
   slug: string;
 
-  @Column({ length: 16, type: 'varchar' })
+  @Column({ length: 16 })
   type: RoutingProfileType;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'source_url', type: 'text', nullable: true })
   sourceUrl?: string;
 
   @Column({ type: 'jsonb', default: {} })
@@ -35,15 +35,15 @@ export class RoutingProfile {
   @Column({ length: 64, nullable: true })
   checksum?: string;
 
-  @Column({ default: true })
+  @Column({ name: 'is_enabled', default: true })
   isEnabled: boolean;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'last_fetched_at', type: 'timestamptz', nullable: true })
   lastFetchedAt?: Date;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }
