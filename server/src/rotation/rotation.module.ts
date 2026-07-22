@@ -7,6 +7,7 @@ import { XuiModule } from '../xui/xui.module';
 import { InboundsModule } from '../inbounds/inbounds.module';
 import { AuditModule } from '../audit/audit.module';
 import { JobModule } from '../jobs/job.module';
+import { CommonModule } from '../common/common.module';
 
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { Inbound } from '../inbounds/entities/inbound.entity';
@@ -15,15 +16,18 @@ import { Setting } from '../settings/entities/setting.entity';
 import { RotationController } from './rotation.controller';
 import { Node } from '../nodes/entities/node.entity';
 import { Tunnel } from '../tunnels/entities/tunnel.entity';
+import { XuiClientBinding } from '../xui-client-bindings/entities/xui-client-binding.entity';
+import { TrafficSnapshot } from '../traffic-snapshots/entities/traffic-snapshot.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscription, Inbound, Domain, Setting, Node, Tunnel]),
+    TypeOrmModule.forFeature([Subscription, Inbound, Domain, Setting, Node, Tunnel, XuiClientBinding, TrafficSnapshot]),
     ScheduleModule.forRoot(),
     XuiModule,
     InboundsModule,
     AuditModule,
     JobModule,
+    CommonModule,
   ],
   providers: [RotationService],
   controllers: [RotationController],

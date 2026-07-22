@@ -9,12 +9,14 @@ import { Domain } from '../domains/entities/domain.entity';
 import { Setting } from '../settings/entities/setting.entity';
 import { Node } from '../nodes/entities/node.entity';
 import { Tunnel } from '../tunnels/entities/tunnel.entity';
+import { XuiClientBinding } from '../xui-client-bindings/entities/xui-client-binding.entity';
+import { TrafficSnapshot } from '../traffic-snapshots/entities/traffic-snapshot.entity';
 import { AuditService } from '../audit/audit.service';
 import { JobService } from '../jobs/job.service';
 import { XuiService } from '../xui/xui.service';
-import { InboundBuilderService } from '../inbounds/inbound-builder.service';
+import { InboundBuilderService, ClientIdentity } from '../inbounds/inbound-builder.service';
+import { ClientIdentityService } from '../common/client-identity.service';
 import { XuiInboundRaw } from '../inbounds/xui-inbound.types';
-import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class RotationService implements OnModuleInit {
@@ -27,10 +29,13 @@ export class RotationService implements OnModuleInit {
     @InjectRepository(Setting) private settingRepo: Repository<Setting>,
     @InjectRepository(Node) private nodeRepo: Repository<Node>,
     @InjectRepository(Tunnel) private tunnelRepo: Repository<Tunnel>,
+    @InjectRepository(XuiClientBinding) private bindingRepo: Repository<XuiClientBinding>,
+    @InjectRepository(TrafficSnapshot) private snapshotRepo: Repository<TrafficSnapshot>,
     private xuiService: XuiService,
     private inboundBuilder: InboundBuilderService,
     private readonly audit: AuditService,
     private readonly jobService: JobService,
+    private readonly clientIdentity: ClientIdentityService,
   ) {}
 
   async onModuleInit() {
@@ -42,7 +47,6 @@ export class RotationService implements OnModuleInit {
     const intervalKey = 'rotation_interval';
     const lastRunKey = 'last_rotation_timestamp';
 
-    // Инициализация статуса ротации
     const existingStatus = await this.settingRepo.findOne({
       where: { key: statusKey },
     });
@@ -57,7 +61,6 @@ export class RotationService implements OnModuleInit {
       this.logger.debug(`Текущий статус ротации: ${existingStatus.value}`);
     }
 
-    // Инициализация интервала ротации (по умолчанию 30 минут)
     const existingInterval = await this.settingRepo.findOne({
       where: { key: intervalKey },
     });
@@ -70,7 +73,6 @@ export class RotationService implements OnModuleInit {
       await this.settingRepo.save(newSetting);
     }
 
-    // Инициализация last_rotation_timestamp (текущее время, чтобы не было ложной ротации при старте)
     const existingLastRun = await this.settingRepo.findOne({
       where: { key: lastRunKey },
     });
@@ -151,7 +153,7 @@ export class RotationService implements OnModuleInit {
           isEnabled: true,
           isAutoRotationEnabled: true,
         },
-        relations: ['inbounds', 'inbounds.node', 'node', 'relayServer'],
+        relations: ['inbounds', 'inbounds.node', 'node', 'relayServer', 'customer'],
       });
       if (subscriptions.length === 0) {
         await this.jobService.complete(job.id, 'No active subscriptions');
@@ -197,12 +199,81 @@ export class RotationService implements OnModuleInit {
     }
   }
 
+  private async saveTrafficSnapshots(sub: Subscription) {
+    if (!sub.inbounds?.length) return;
+
+    for (const inbound of sub.inbounds) {
+      if (!inbound.xuiId || inbound.xuiId <= 0) continue;
+
+      const node = await this.resolveInboundNode(inbound);
+
+      const email = `${sub.uuid}--${inbound.protocol}@rotation`;
+      const traffic = await this.xuiService.getClientTraffics(email, node);
+
+      if (!traffic) continue;
+
+      const snapshot = this.snapshotRepo.create({
+        bindingId: '00000000-0000-0000-0000-000000000000',
+        subscriptionId: sub.id,
+        customerId: sub.customerId,
+        upload: traffic.upload,
+        download: traffic.download,
+        total: traffic.total,
+        sourceResetAt: new Date(),
+      });
+      await this.snapshotRepo.save(snapshot);
+    }
+  }
+
+  private buildIdentity(sub: Subscription, protocol: string, nodeName?: string): ClientIdentity {
+    const customerName = sub.customer?.name || sub.name;
+    return {
+      clientId: this.clientIdentity.stableXuiClientId({
+        customerId: sub.customerId || sub.id,
+        subscriptionId: sub.id,
+        nodeId: nodeName || 'default',
+        protocol,
+      }),
+      clientEmail: this.clientIdentity.readableXuiEmail({
+        customerName,
+        subscriptionName: sub.name,
+        nodeName,
+        protocol,
+      }),
+      subId: sub.uuid,
+      remark: this.clientIdentity.readableInboundRemark({
+        customerName,
+        subscriptionName: sub.name,
+        nodeName,
+        protocol,
+      }),
+    };
+  }
+
+  private async saveBinding(sub: Subscription, inbound: Inbound, identity: ClientIdentity) {
+    const binding = this.bindingRepo.create({
+      subscriptionId: sub.id,
+      nodeId: inbound.nodeId,
+      inboundId: inbound.id,
+      protocol: inbound.protocol,
+      xuiInboundId: inbound.xuiId,
+      xuiClientId: identity.clientId,
+      xuiEmail: identity.clientEmail,
+      xuiSubId: identity.subId,
+      lastSyncedAt: new Date(),
+    });
+    await this.bindingRepo.save(binding);
+  }
+
   private async rotateSubscription(
     sub: Subscription,
     domains: Domain[],
     defaultNode: Node | null,
   ) {
     this.logger.debug(`Ротация для подписки: ${sub.name} (${sub.uuid})`);
+
+    // Сохраняем snapshot трафика перед удалением
+    await this.saveTrafficSnapshots(sub);
 
     // Удаляем старые инбаунды
     if (sub.inbounds && sub.inbounds.length > 0) {
@@ -241,12 +312,10 @@ export class RotationService implements OnModuleInit {
     });
     const defaultFlagEmoji = flag?.value ?? '%F0%9F%92%AF';
 
-    // Получаем конфиг или пустой массив
     const inboundsConfig = sub.inboundsConfig || [];
 
     for (const config of inboundsConfig) {
       const type = config.type;
-      const uuid = uuidv4();
       const targetNode = await this.resolveNode(
         config.nodeId,
         sub.node,
@@ -266,16 +335,19 @@ export class RotationService implements OnModuleInit {
         this.getNodeAddress(targetNode) ||
         serverAddress;
       const flagEmoji = config.flag || targetNode?.flag || defaultFlagEmoji;
+      const nodeName = targetNode?.name;
+
+      const identity = this.buildIdentity(sub, type, nodeName);
 
       let sni = '';
 
       // === 1. Обработка Custom ===
       if (type === 'custom') {
         const newInbound = this.inboundRepo.create({
-          xuiId: 0, // Не привязано к 3x-ui
+          xuiId: 0,
           port: 0,
           protocol: 'custom',
-          remark: 'custom-link',
+          remark: identity.remark || 'custom-link',
           link: config.link || '',
           subscription: sub,
         });
@@ -285,7 +357,6 @@ export class RotationService implements OnModuleInit {
         sni = config.sni === 'random' ? this.pickDomain(domains) : config.sni;
       }
 
-      
       // === 2. Обработка Hysteria2 ===
       if (type === 'hysteria2-udp') {
         let port = 0;
@@ -302,14 +373,11 @@ export class RotationService implements OnModuleInit {
         const hysteriaSni = this.getNodeAddress(targetNode) || serverAddress;
         const hysteriaConfig = this.inboundBuilder.buildHysteria2Inbound({
           port,
-          uuid,
           sni: hysteriaSni,
           certificateFile: config.certificateFile,
           keyFile: config.keyFile,
+          identity,
         });
-        if (config.name?.trim()) {
-          hysteriaConfig.remark = config.name.trim();
-        }
         const xuiId = await this.xuiService.addInbound(
           hysteriaConfig,
           targetNode,
@@ -324,7 +392,7 @@ export class RotationService implements OnModuleInit {
         const link = this.inboundBuilder.buildInboundLink(
           hysteriaConfig,
           targetAddress,
-          uuid,
+          identity.clientId,
           flagEmoji,
         );
         const newInbound = this.inboundRepo.create({
@@ -332,23 +400,22 @@ export class RotationService implements OnModuleInit {
           port,
           protocol: 'hysteria2',
           remark: hysteriaConfig.remark,
-          link: link,
+          link,
           subscription: sub,
           node: targetNode,
           relayServer,
         });
         await this.inboundRepo.save(newInbound);
+        await this.saveBinding(sub, newInbound, identity);
         continue;
       }
 
       // === 3. Обработка стандартных инбаундов Xray (3x-ui) ===
 
-      // Определяем порт
       let port = 0;
       if (config.port === 'random' || !config.port) {
         port = await this.getFreePort(0, usedPorts);
       } else {
-        // Если передан конкретный порт строкой или числом
         port =
           typeof config.port === 'string'
             ? parseInt(config.port, 10)
@@ -362,51 +429,47 @@ export class RotationService implements OnModuleInit {
         case 'vless-tcp-reality':
           xuiConfig = this.inboundBuilder.buildVlessRealityTcp({
             port,
-            uuid,
             sni,
             ...keys,
+            identity,
           });
           break;
         case 'vless-xhttp-reality':
           xuiConfig = this.inboundBuilder.buildVlessRealityXhttp({
             port,
-            uuid,
             sni,
             ...keys,
+            identity,
           });
           break;
         case 'vless-grpc-reality':
           xuiConfig = this.inboundBuilder.buildVlessRealityGrpc({
             port,
-            uuid,
             sni,
             ...keys,
+            identity,
           });
           break;
         case 'vless-ws':
-          xuiConfig = this.inboundBuilder.buildVlessWs({ port, uuid, sni });
+          xuiConfig = this.inboundBuilder.buildVlessWs({ port, sni, identity });
           break;
         case 'vmess-tcp':
-          xuiConfig = this.inboundBuilder.buildVmessTcp({ port, uuid });
+          xuiConfig = this.inboundBuilder.buildVmessTcp({ port, identity });
           break;
         case 'shadowsocks-tcp':
-          xuiConfig = this.inboundBuilder.buildShadowsocksTcp({ port, uuid });
+          xuiConfig = this.inboundBuilder.buildShadowsocksTcp({ port, identity });
           break;
         case 'trojan-tcp-reality':
           xuiConfig = this.inboundBuilder.buildTrojanRealityTcp({
             port,
-            uuid,
             sni,
             ...keys,
+            identity,
           });
           break;
         default:
           this.logger.warn(`Неизвестный тип инбаунда: ${type}`);
           continue;
-      }
-
-      if (config.name?.trim()) {
-        xuiConfig.remark = config.name.trim();
       }
 
       const xuiId = await this.xuiService.addInbound(xuiConfig, targetNode);
@@ -436,6 +499,7 @@ export class RotationService implements OnModuleInit {
           relayServer,
         });
         await this.inboundRepo.save(newInbound);
+        await this.saveBinding(sub, newInbound, identity);
       }
     }
 
@@ -466,9 +530,6 @@ export class RotationService implements OnModuleInit {
     }
   }
 
-  /**
-   * Ручная ротация одной подписки (независимо от флага isAutoRotationEnabled)
-   */
   async rotateSingleSubscription(subscriptionId: string) {
     const job = await this.jobService.create('rotation', { trigger: 'manual', subscriptionId });
     await this.jobService.start(job.id);
@@ -478,7 +539,7 @@ export class RotationService implements OnModuleInit {
 
       const sub = await this.subRepo.findOne({
         where: { id: subscriptionId },
-        relations: ['inbounds', 'inbounds.node', 'node', 'relayServer'],
+        relations: ['inbounds', 'inbounds.node', 'node', 'relayServer', 'customer'],
       });
 
       if (!sub) {
@@ -554,7 +615,6 @@ export class RotationService implements OnModuleInit {
         });
         if (!sub) continue;
 
-        // Delete current inbounds
         if (sub.inbounds?.length) {
           for (const inbound of sub.inbounds) {
             if (inbound.xuiId && inbound.xuiId > 0) {
@@ -564,7 +624,6 @@ export class RotationService implements OnModuleInit {
           }
         }
 
-        // Restore old inbounds
         const oldInbounds = snapshot[subId];
         for (const old of oldInbounds) {
           const targetNode = old.nodeId

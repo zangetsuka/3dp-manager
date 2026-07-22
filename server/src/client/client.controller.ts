@@ -19,8 +19,10 @@ import * as QRCode from 'qrcode';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
+import { RoutingProfile } from '../routing-profiles/entities/routing-profile.entity';
 import { Public } from '../auth/public.decorator';
 import { Tunnel } from 'src/tunnels/entities/tunnel.entity';
+import { HappRoutingService } from '../common/happ-routing.service';
 import { generateSubscriptionHtmlWithQr } from './templates/subscription.template';
 
 @ApiTags('Subscriptions')
@@ -33,8 +35,34 @@ export class ClientController {
     private subRepo: Repository<Subscription>,
     @InjectRepository(Tunnel)
     private tunnelRepo: Repository<Tunnel>,
+    @InjectRepository(RoutingProfile)
+    private routingProfileRepo: Repository<RoutingProfile>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private happRouting: HappRoutingService,
   ) {}
+
+  private async buildSubscriptionBody(sub: Subscription): Promise<string> {
+    const links =
+      sub.inbounds?.map((i) => i.link).filter((l) => l && l.length > 0) || [];
+
+    let lines = [...links];
+
+    if (sub.routingProfileId) {
+      try {
+        const profile = await this.routingProfileRepo.findOne({
+          where: { id: sub.routingProfileId },
+        });
+        if (profile?.config && Object.keys(profile.config).length > 0) {
+          const deeplink = this.happRouting.toDeeplink(profile.config as Record<string, unknown>);
+          lines.push(deeplink);
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to add routing deeplink for sub ${sub.id}: ${(e as Error).message}`);
+      }
+    }
+
+    return lines.join('\n');
+  }
 
   @Public()
   @Throttle({ default: { limit: 300, ttl: 60000 } })
@@ -49,17 +77,14 @@ export class ClientController {
   ) {
     const sub = await this.subRepo.findOne({
       where: { uuid },
-      relations: ['inbounds'],
+      relations: ['inbounds', 'routingProfile'],
     });
 
     if (!sub || !sub.isEnabled) {
       throw new HttpException('Subscription not found', HttpStatus.NOT_FOUND);
     }
 
-    const links =
-      sub.inbounds?.map((i) => i.link).filter((l) => l && l.length > 0) || [];
-
-    const plainTextList = links.join('\n');
+    const plainTextList = await this.buildSubscriptionBody(sub);
     const base64Config = Buffer.from(plainTextList).toString('base64');
 
     const userAgent = req.headers['user-agent'] || '';
@@ -120,7 +145,7 @@ export class ClientController {
 
     const sub = await this.subRepo.findOne({
       where: { uuid },
-      relations: ['inbounds'],
+      relations: ['inbounds', 'routingProfile'],
     });
 
     if (!sub || !sub.isEnabled) {
@@ -137,7 +162,23 @@ export class ClientController {
           return this.patchLink(i.link, relayHost);
         }) || [];
 
-    const plainTextList = links.join('\n');
+    let lines = [...links];
+
+    if (sub.routingProfileId) {
+      try {
+        const profile = await this.routingProfileRepo.findOne({
+          where: { id: sub.routingProfileId },
+        });
+        if (profile?.config && Object.keys(profile.config).length > 0) {
+          const deeplink = this.happRouting.toDeeplink(profile.config as Record<string, unknown>);
+          lines.push(deeplink);
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to add routing deeplink for sub ${sub.id}: ${(e as Error).message}`);
+      }
+    }
+
+    const plainTextList = lines.join('\n');
     const base64Config = Buffer.from(plainTextList).toString('base64');
 
     const userAgent = req.headers['user-agent'] || '';

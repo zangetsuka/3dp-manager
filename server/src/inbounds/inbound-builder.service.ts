@@ -8,39 +8,51 @@ import {
   XuiStreamSettings,
 } from './xui-inbound.types';
 
+export interface ClientIdentity {
+  clientId: string;
+  clientEmail: string;
+  subId?: string;
+  remark?: string;
+}
+
 @Injectable()
 export class InboundBuilderService {
   protected readonly logger = new Logger(InboundBuilderService.name);
   private flag = process.env.COUNTRY_FLAG ?? '%F0%9F%92%AF';
 
+  private makeClient(params: { id: string; email: string; subId?: string; flow?: string }) {
+    return {
+      id: params.id,
+      flow: params.flow ?? '',
+      email: params.email,
+      enable: true,
+      limitIp: 0,
+      totalGB: 0,
+      expiryTime: 0,
+      tgId: 0,
+      subId: params.subId ?? '',
+      reset: 0,
+    };
+  }
+
   buildVlessRealityTcp(params: {
     port: number;
-    uuid: string;
     sni: string;
     privateKey: string;
     publicKey: string;
+    identity?: ClientIdentity;
   }) {
-    const { port, uuid, sni, privateKey, publicKey } = params;
+    const { port, sni, privateKey, publicKey } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'vless',
-      remark: `vless-tcp-reality`,
+      remark: params.identity?.remark || `vless-tcp-reality`,
       settings: JSON.stringify({
-        clients: [
-          {
-            id: uuid,
-            flow: 'xtls-rprx-vision',
-            email: uuid,
-            enable: true,
-            limitIp: 0,
-            totalGB: 0,
-            expiryTime: 0,
-            tgId: 0,
-            subId: '',
-            reset: 0,
-          },
-        ],
+        clients: [this.makeClient({ id, email, subId, flow: 'xtls-rprx-vision' })],
         decryption: 'none',
         encryption: 'none',
         fallbacks: [],
@@ -80,32 +92,22 @@ export class InboundBuilderService {
 
   buildVlessRealityXhttp(params: {
     port: number;
-    uuid: string;
     sni: string;
     privateKey: string;
     publicKey: string;
+    identity?: ClientIdentity;
   }) {
-    const { port, uuid, sni, privateKey, publicKey } = params;
+    const { port, sni, privateKey, publicKey } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'vless',
-      remark: `vless-xhttp-reality`,
+      remark: params.identity?.remark || `vless-xhttp-reality`,
       settings: JSON.stringify({
-        clients: [
-          {
-            id: uuid,
-            flow: '',
-            email: uuid,
-            enable: true,
-            limitIp: 0,
-            totalGB: 0,
-            expiryTime: 0,
-            tgId: 0,
-            subId: '',
-            reset: 0,
-          },
-        ],
+        clients: [this.makeClient({ id, email, subId })],
         decryption: 'none',
         encryption: 'none',
         fallbacks: [],
@@ -154,32 +156,22 @@ export class InboundBuilderService {
 
   buildVlessRealityGrpc(params: {
     port: number;
-    uuid: string;
     sni: string;
     privateKey: string;
     publicKey: string;
+    identity?: ClientIdentity;
   }) {
-    const { port, uuid, sni, privateKey, publicKey } = params;
+    const { port, sni, privateKey, publicKey } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'vless',
-      remark: 'vless-grpc-reality',
+      remark: params.identity?.remark || 'vless-grpc-reality',
       settings: JSON.stringify({
-        clients: [
-          {
-            id: uuid,
-            email: uuid,
-            enable: true,
-            flow: '',
-            limitIp: 0,
-            totalGB: 0,
-            expiryTime: 0,
-            tgId: 0,
-            subId: '',
-            reset: 0,
-          },
-        ],
+        clients: [this.makeClient({ id, email, subId })],
         decryption: 'none',
         encryption: 'none',
         fallbacks: [],
@@ -218,28 +210,18 @@ export class InboundBuilderService {
     };
   }
 
-  buildVlessWs(params: { port: number; uuid: string; sni: string }) {
-    const { port, uuid, sni } = params;
+  buildVlessWs(params: { port: number; sni: string; identity?: ClientIdentity }) {
+    const { port, sni } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'vless',
-      remark: `vless-ws`,
+      remark: params.identity?.remark || `vless-ws`,
       settings: JSON.stringify({
-        clients: [
-          {
-            id: uuid,
-            email: uuid,
-            enable: true,
-            flow: '',
-            limitIp: 0,
-            totalGB: 0,
-            expiryTime: 0,
-            tgId: 0,
-            subId: '',
-            reset: 0,
-          },
-        ],
+        clients: [this.makeClient({ id, email, subId })],
         decryption: 'none',
         encryption: 'none',
         fallbacks: [],
@@ -264,25 +246,28 @@ export class InboundBuilderService {
     };
   }
 
-  buildVmessTcp(params: { port: number; uuid: string }) {
-    const { port, uuid } = params;
+  buildVmessTcp(params: { port: number; identity?: ClientIdentity }) {
+    const { port } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'vmess',
-      remark: 'vmess-tcp',
+      remark: params.identity?.remark || 'vmess-tcp',
       settings: JSON.stringify({
         clients: [
           {
-            id: uuid,
+            id,
             flow: '',
-            email: uuid,
+            email,
             enable: true,
             limitIp: 0,
             totalGB: 0,
             expiryTime: 0,
             tgId: 0,
-            subId: '0',
+            subId: subId || '0',
             alterId: '0',
             reset: 0,
           },
@@ -305,26 +290,29 @@ export class InboundBuilderService {
     };
   }
 
-  buildShadowsocksTcp(params: { port: number; uuid: string }) {
-    const { port, uuid } = params;
+  buildShadowsocksTcp(params: { port: number; identity?: ClientIdentity }) {
+    const { port } = params;
+    const id = params.identity?.clientId || '';
+    const email = params.identity?.clientEmail || uuidv4();
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'shadowsocks',
-      remark: 'shadowsocks-tcp',
+      remark: params.identity?.remark || 'shadowsocks-tcp',
       settings: JSON.stringify({
         clients: [
           {
             id: '',
             flow: '',
-            email: uuid,
-            password: crypto.randomBytes(32).toString('base64'),
+            email,
+            password: id || crypto.randomBytes(32).toString('base64'),
             enable: true,
             limitIp: 0,
             totalGB: 0,
             expiryTime: 0,
             tgId: 0,
-            subId: '',
+            subId,
             reset: 0,
           },
         ],
@@ -352,22 +340,25 @@ export class InboundBuilderService {
 
   buildTrojanRealityTcp(params: {
     port: number;
-    uuid: string;
     sni: string;
     privateKey: string;
     publicKey: string;
+    identity?: ClientIdentity;
   }) {
-    const { port, uuid, sni, privateKey, publicKey } = params;
+    const { port, sni, privateKey, publicKey } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
+    const subId = params.identity?.subId || '';
     return {
       enable: true,
       port,
       protocol: 'trojan',
-      remark: `trojan-tcp-reality`,
+      remark: params.identity?.remark || `trojan-tcp-reality`,
       settings: JSON.stringify({
         clients: [
           {
-            id: uuid,
-            email: uuid,
+            id,
+            email,
             password: crypto.randomBytes(8).toString('hex'),
             enable: true,
             flow: '',
@@ -375,7 +366,7 @@ export class InboundBuilderService {
             totalGB: 0,
             expiryTime: 0,
             tgId: 0,
-            subId: '',
+            subId,
             reset: 0,
           },
         ],
@@ -425,12 +416,14 @@ export class InboundBuilderService {
 
   buildHysteria2Inbound(params: {
     port: number;
-    uuid: string;
     sni: string;
     certificateFile?: string;
     keyFile?: string;
+    identity?: ClientIdentity;
   }) {
-    const { port, uuid, sni } = params;
+    const { port, sni } = params;
+    const id = params.identity?.clientId || uuidv4();
+    const email = params.identity?.clientEmail || id;
     const certificateFile =
       params.certificateFile || `/root/cert/${sni}/fullchain.pem`;
     const keyFile =
@@ -440,12 +433,12 @@ export class InboundBuilderService {
       enable: true,
       port,
       protocol: 'hysteria',
-      remark: 'hysteria2-udp',
+      remark: params.identity?.remark || 'hysteria2-udp',
       settings: JSON.stringify({
         clients: [
           {
-            auth: uuid,
-            email: uuid,
+            auth: id,
+            email,
             enable: true,
           },
         ],
@@ -465,7 +458,7 @@ export class InboundBuilderService {
           ],
         },
         hysteriaSettings: {
-          auth: uuid,
+          auth: id,
           masquerade: {
             content: '',
             dir: '',
