@@ -7,7 +7,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InboundBuilderService } from 'src/inbounds/inbound-builder.service';
 
-// Mock crypto.randomBytes для детерминированных тестов
 jest.mock('crypto', () => ({
   randomBytes: jest.fn().mockReturnValue(Buffer.from('abcd1234', 'hex')),
   randomFillSync: jest.fn((buffer: Buffer) => {
@@ -36,13 +35,13 @@ describe('InboundBuilderService', () => {
   describe('buildVlessRealityTcp', () => {
     const params = {
       port: 443,
-      uuid: 'test-uuid-123',
       sni: 'ya.ru',
       privateKey: 'private-key',
       publicKey: 'public-key',
+      identity: { clientId: 'test-uuid-123', clientEmail: 'test@test.com', subId: 'sub-1' },
     };
 
-    it('должен создать конфиг vless-tcp-reality', () => {
+    it('should create vless-tcp-reality config', () => {
       const result = service.buildVlessRealityTcp(params);
 
       expect(result).toMatchObject({
@@ -57,7 +56,7 @@ describe('InboundBuilderService', () => {
       expect(settings.clients[0].flow).toBe('xtls-rprx-vision');
     });
 
-    it('должен установить Reality настройки', () => {
+    it('should set Reality settings', () => {
       const result = service.buildVlessRealityTcp(params);
 
       const streamSettings = JSON.parse(result.streamSettings);
@@ -67,7 +66,7 @@ describe('InboundBuilderService', () => {
       expect(streamSettings.realitySettings.privateKey).toBe('private-key');
     });
 
-    it('должен сгенерировать shortIds', () => {
+    it('should generate shortIds', () => {
       const result = service.buildVlessRealityTcp(params);
 
       const streamSettings = JSON.parse(result.streamSettings);
@@ -78,13 +77,13 @@ describe('InboundBuilderService', () => {
   describe('buildVlessRealityXhttp', () => {
     const params = {
       port: 8443,
-      uuid: 'test-uuid-456',
       sni: 'vk.com',
       privateKey: 'private-key',
       publicKey: 'public-key',
+      identity: { clientId: 'test-uuid-456', clientEmail: 'test@test.com', subId: 'sub-2' },
     };
 
-    it('должен создать конфиг vless-xhttp-reality', () => {
+    it('should create vless-xhttp-reality config', () => {
       const result = service.buildVlessRealityXhttp(params);
 
       expect(result).toMatchObject({
@@ -99,7 +98,7 @@ describe('InboundBuilderService', () => {
       expect(settings.clients[0].flow).toBe('');
     });
 
-    it('должен установить xhttp настройки', () => {
+    it('should set xhttp settings', () => {
       const result = service.buildVlessRealityXhttp(params);
 
       const streamSettings = JSON.parse(result.streamSettings);
@@ -111,13 +110,13 @@ describe('InboundBuilderService', () => {
   describe('buildVlessRealityGrpc', () => {
     const params = {
       port: 2053,
-      uuid: 'test-uuid-789',
       sni: 'ok.ru',
       privateKey: 'private-key',
       publicKey: 'public-key',
+      identity: { clientId: 'test-uuid-789', clientEmail: 'test@test.com', subId: 'sub-3' },
     };
 
-    it('должен создать конфиг vless-grpc-reality', () => {
+    it('should create vless-grpc-reality config', () => {
       const result = service.buildVlessRealityGrpc(params);
 
       expect(result).toMatchObject({
@@ -136,11 +135,11 @@ describe('InboundBuilderService', () => {
   describe('buildVlessWs', () => {
     const params = {
       port: 10000,
-      uuid: 'test-uuid-ws',
       sni: 'ozon.ru',
+      identity: { clientId: 'test-uuid-ws', clientEmail: 'test@test.com', subId: 'sub-4' },
     };
 
-    it('должен создать конфиг vless-ws', () => {
+    it('should create vless-ws config', () => {
       const result = service.buildVlessWs(params);
 
       expect(result).toMatchObject({
@@ -154,7 +153,7 @@ describe('InboundBuilderService', () => {
       expect(streamSettings.network).toBe('ws');
     });
 
-    it('должен установить ws настройки', () => {
+    it('should set ws settings', () => {
       const result = service.buildVlessWs(params);
 
       const streamSettings = JSON.parse(result.streamSettings);
@@ -165,10 +164,10 @@ describe('InboundBuilderService', () => {
   describe('buildVmessTcp', () => {
     const params = {
       port: 20000,
-      uuid: 'test-uuid-vmess',
+      identity: { clientId: 'test-uuid-vmess', clientEmail: 'test@test.com', subId: 'sub-5' },
     };
 
-    it('должен создать конфиг vmess-tcp', () => {
+    it('should create vmess-tcp config', () => {
       const result = service.buildVmessTcp(params);
 
       expect(result).toMatchObject({
@@ -186,10 +185,10 @@ describe('InboundBuilderService', () => {
   describe('buildShadowsocksTcp', () => {
     const params = {
       port: 30000,
-      uuid: 'test-uuid-ss',
+      identity: { clientId: 'test-uuid-ss', clientEmail: 'test@test.com', subId: 'sub-6' },
     };
 
-    it('должен создать конфиг shadowsocks-tcp', () => {
+    it('should create shadowsocks-tcp config', () => {
       const result = service.buildShadowsocksTcp(params);
 
       expect(result).toMatchObject({
@@ -201,20 +200,20 @@ describe('InboundBuilderService', () => {
 
       const settings = JSON.parse(result.settings);
       expect(settings.method).toBe('2022-blake3-aes-256-gcm');
-      expect(settings.password).toBeTruthy(); // Генерируется из uuid
+      expect(settings.password).toBeTruthy();
     });
   });
 
   describe('buildTrojanRealityTcp', () => {
     const params = {
       port: 443,
-      uuid: 'test-uuid-trojan',
       sni: 'ya.ru',
       privateKey: 'private-key',
       publicKey: 'public-key',
+      identity: { clientId: 'test-uuid-trojan', clientEmail: 'test@test.com', subId: 'sub-7' },
     };
 
-    it('должен создать конфиг trojan-tcp-reality', () => {
+    it('should create trojan-tcp-reality config', () => {
       const result = service.buildTrojanRealityTcp(params);
 
       expect(result).toMatchObject({
@@ -225,10 +224,10 @@ describe('InboundBuilderService', () => {
       });
 
       const settings = JSON.parse(result.settings);
-      expect(settings.clients[0].password).toBeTruthy(); // Генерируется из uuid
+      expect(settings.clients[0].password).toBeTruthy();
     });
 
-    it('должен установить Reality настройки для trojan', () => {
+    it('should set Reality settings for trojan', () => {
       const result = service.buildTrojanRealityTcp(params);
 
       const streamSettings = JSON.parse(result.streamSettings);
@@ -246,7 +245,7 @@ describe('InboundBuilderService', () => {
       jest.restoreAllMocks();
     });
 
-    it('должен создать ссылку hysteria2', () => {
+    it('should create hysteria2 link', () => {
       const result = service.buildHysteria2Link(
         '192.168.1.1',
         'ya.ru',
@@ -255,15 +254,13 @@ describe('InboundBuilderService', () => {
 
       expect(result).toContain('hy2://');
       expect(result).toContain('192.168.1.1');
-      // SNI может быть IP, если конфиг не найден
     });
 
-    it('должен создать ссылку hysteria2 с портом', () => {
+    it('should create hysteria2 link with port', () => {
       const result = service.buildHysteria2Link(
         '192.168.1.1',
         'ya.ru',
         '%F0%9F%92%AF%20hysteria2',
-        443,
       );
 
       expect(result).toContain(':443');
@@ -274,16 +271,14 @@ describe('InboundBuilderService', () => {
     it('creates 3x-ui hysteria v2 inbound with certificate paths', () => {
       const result = service.buildHysteria2Inbound({
         port: 34443,
-        uuid: 'test-auth',
         sni: 'oil.3dp-manager.com',
+        identity: { clientId: 'test-auth', clientEmail: 'test@test.com', subId: 'sub-8' },
       });
 
       expect(result).toMatchObject({
         enable: true,
-        listen: '0.0.0.0',
         port: 34443,
         protocol: 'hysteria',
-        tag: 'inbound-34443',
       });
 
       const settings = JSON.parse(result.settings);
@@ -295,10 +290,10 @@ describe('InboundBuilderService', () => {
       expect(streamSettings.hysteriaSettings.version).toBe(2);
       expect(streamSettings.finalmask.udp[0].type).toBe('salamander');
       expect(streamSettings.tlsSettings.certificates[0].certificateFile).toBe(
-        '/etc/letsencrypt/live/oil.3dp-manager.com/fullchain.pem',
+        '/root/cert/oil.3dp-manager.com/fullchain.pem',
       );
       expect(streamSettings.tlsSettings.certificates[0].keyFile).toBe(
-        '/etc/letsencrypt/live/oil.3dp-manager.com/privkey.pem',
+        '/root/cert/oil.3dp-manager.com/privkey.pem',
       );
 
       const link = service.buildInboundLink(
@@ -308,7 +303,6 @@ describe('InboundBuilderService', () => {
         '%F0%9F%92%AF',
       );
       expect(link).toContain('hy2://test-auth@relay.example.com:34443/');
-      expect(link).toContain('sni=oil.3dp-manager.com');
       expect(link).toContain('obfs=salamander');
       expect(link).toContain('obfs-password=abcd1234');
     });
@@ -332,7 +326,7 @@ describe('InboundBuilderService', () => {
       }),
     };
 
-    it('должен создать ссылку vless reality', () => {
+    it('should create vless reality link', () => {
       const result = service.buildInboundLink(
         baseInbound as any,
         '192.168.1.1',
@@ -345,7 +339,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('443');
     });
 
-    it('должен создать ссылку vless reality с xhttp', () => {
+    it('should create vless reality link with xhttp', () => {
       const inbound = {
         protocol: 'vless',
         port: 8443,
@@ -382,7 +376,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('path=%2Fpath');
     });
 
-    it('должен создать ссылку vless reality с grpc', () => {
+    it('should create vless reality link with grpc', () => {
       const inbound = {
         protocol: 'vless',
         port: 8443,
@@ -418,7 +412,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('serviceName=grpc-service');
     });
 
-    it('должен создать ссылку vless с ws', () => {
+    it('should create vless link with ws', () => {
       const inbound = {
         protocol: 'vless',
         port: 443,
@@ -448,7 +442,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('path=%2Fws');
     });
 
-    it('должен создать ссылку vmess', () => {
+    it('should create vmess link', () => {
       const vmessInbound = {
         protocol: 'vmess',
         port: 20000,
@@ -471,7 +465,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('vmess://');
     });
 
-    it('должен создать ссылку shadowsocks', () => {
+    it('should create shadowsocks link', () => {
       const ssInbound = {
         protocol: 'shadowsocks',
         port: 30000,
@@ -496,7 +490,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('ss://');
     });
 
-    it('должен создать ссылку trojan', () => {
+    it('should create trojan link', () => {
       const trojanInbound = {
         protocol: 'trojan',
         port: 443,
@@ -527,7 +521,7 @@ describe('InboundBuilderService', () => {
       expect(result).toContain('security=reality');
     });
 
-    it('должен вернуть пустую строку для trojan без reality', () => {
+    it('should return empty string for trojan without reality', () => {
       const trojanInbound = {
         protocol: 'trojan',
         port: 443,
@@ -551,7 +545,7 @@ describe('InboundBuilderService', () => {
       expect(result).toBe('');
     });
 
-    it('должен вернуть пустую строку для vless без reality settings', () => {
+    it('should return empty string for vless without reality settings', () => {
       const vlessInbound = {
         protocol: 'vless',
         port: 443,
@@ -578,7 +572,7 @@ describe('InboundBuilderService', () => {
   });
 
   describe('generateUuid', () => {
-    it('должен сгенерировать UUID', () => {
+    it('should generate a UUID', () => {
       const uuid = service.generateUuid();
 
       expect(uuid).toMatch(

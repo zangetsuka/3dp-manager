@@ -3,7 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { AppModule } from '../src/app.module';
-import { InboundBuilderService } from '../src/inbounds/inbound-builder.service';
+import { InboundBuilderService, ClientIdentity } from '../src/inbounds/inbound-builder.service';
 import { XuiInboundRaw } from '../src/inbounds/xui-inbound.types';
 import { Node } from '../src/nodes/entities/node.entity';
 import { XuiService } from '../src/xui/xui.service';
@@ -20,6 +20,15 @@ type SmokeResult = {
 };
 
 const randomPort = () => Math.floor(Math.random() * (60000 - 20000 + 1)) + 20000;
+
+function makeIdentity(protocol: string): ClientIdentity {
+  const id = uuidv4();
+  return {
+    clientId: id,
+    clientEmail: `smoke--${protocol}--${Date.now()}@test`,
+    subId: uuidv4(),
+  };
+}
 
 async function main() {
   console.log('Starting inbound smoke test...');
@@ -52,39 +61,39 @@ async function main() {
 
   const buildCases: Array<{
     type: string;
-    build: (port: number, uuid: string) => XuiInboundRaw;
+    build: (port: number) => XuiInboundRaw;
   }> = [
     {
       type: 'vless-tcp-reality',
-      build: (port, uuid) => builder.buildVlessRealityTcp({ port, uuid, sni: SNI, ...keys }),
+      build: (port) => builder.buildVlessRealityTcp({ port, sni: SNI, ...keys, identity: makeIdentity('vless') }),
     },
     {
       type: 'vless-xhttp-reality',
-      build: (port, uuid) => builder.buildVlessRealityXhttp({ port, uuid, sni: SNI, ...keys }),
+      build: (port) => builder.buildVlessRealityXhttp({ port, sni: SNI, ...keys, identity: makeIdentity('vless') }),
     },
     {
       type: 'vless-grpc-reality',
-      build: (port, uuid) => builder.buildVlessRealityGrpc({ port, uuid, sni: SNI, ...keys }),
+      build: (port) => builder.buildVlessRealityGrpc({ port, sni: SNI, ...keys, identity: makeIdentity('vless') }),
     },
     {
       type: 'vless-ws',
-      build: (port, uuid) => builder.buildVlessWs({ port, uuid, sni: SNI }),
+      build: (port) => builder.buildVlessWs({ port, sni: SNI, identity: makeIdentity('vless') }),
     },
     {
       type: 'vmess-tcp',
-      build: (port, uuid) => builder.buildVmessTcp({ port, uuid }),
+      build: (port) => builder.buildVmessTcp({ port, identity: makeIdentity('vmess') }),
     },
     {
       type: 'shadowsocks-tcp',
-      build: (port, uuid) => builder.buildShadowsocksTcp({ port, uuid }),
+      build: (port) => builder.buildShadowsocksTcp({ port, identity: makeIdentity('ss') }),
     },
     {
       type: 'trojan-tcp-reality',
-      build: (port, uuid) => builder.buildTrojanRealityTcp({ port, uuid, sni: SNI, ...keys }),
+      build: (port) => builder.buildTrojanRealityTcp({ port, sni: SNI, ...keys, identity: makeIdentity('trojan') }),
     },
     {
       type: 'hysteria2-udp',
-      build: (port, uuid) => builder.buildHysteria2Inbound({ port, uuid, sni: SNI }),
+      build: (port) => builder.buildHysteria2Inbound({ port, sni: SNI, identity: makeIdentity('hy2') }),
     },
   ];
 
@@ -92,12 +101,11 @@ async function main() {
 
   for (const testCase of buildCases) {
     const port = randomPort();
-    const uuid = uuidv4();
     let xuiId: number | null = null;
 
     try {
       console.log(`Testing ${testCase.type} on port ${port}...`);
-      const config = testCase.build(port, uuid);
+      const config = testCase.build(port);
       config.remark = `smoke-${testCase.type}-${Date.now()}`;
       xuiId = await xuiService.addInbound(config, node);
 
