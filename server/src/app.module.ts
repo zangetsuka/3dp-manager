@@ -9,6 +9,11 @@ import { Setting } from './settings/entities/setting.entity';
 import { Domain } from './domains/entities/domain.entity';
 import { Subscription } from './subscriptions/entities/subscription.entity';
 import { Inbound } from './inbounds/entities/inbound.entity';
+import { RoutingProfile } from './routing-profiles/entities/routing-profile.entity';
+import { Customer } from './customers/entities/customer.entity';
+import { CustomerGroup } from './customer-groups/entities/customer-group.entity';
+import { XuiClientBinding } from './xui-client-bindings/entities/xui-client-binding.entity';
+import { TrafficSnapshot } from './traffic-snapshots/entities/traffic-snapshot.entity';
 import { XuiModule } from './xui/xui.module';
 import { InboundsModule } from './inbounds/inbounds.module';
 import { RotationModule } from './rotation/rotation.module';
@@ -33,6 +38,10 @@ import { AddNodesAndNodeRelations1765960000000 } from './migrations/176596000000
 import { AddNodeIpFlagAndInboundLabels1770000000000 } from './migrations/1770000000000-add-node-ip-flag-and-inbound-labels';
 import { AddNodeDomain1770000000001 } from './migrations/1770000000001-add-node-domain';
 import { InitialBaseTables1770000000002 } from './migrations/1770000000002-initial-base-tables';
+import { CommonModule } from './common/common.module';
+import { RoutingProfilesModule } from './routing-profiles/routing-profiles.module';
+import { CustomersModule } from './customers/customers.module';
+import { CustomerGroupsModule } from './customer-groups/customer-groups.module';
 
 @Module({
   imports: [
@@ -52,7 +61,10 @@ import { InitialBaseTables1770000000002 } from './migrations/1770000000002-initi
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      entities: [Setting, Domain, Subscription, Inbound, Tunnel, Node, AuditLog, Job],
+      entities: [
+        Setting, Domain, Subscription, Inbound, Tunnel, Node, AuditLog, Job,
+        RoutingProfile, Customer, CustomerGroup, XuiClientBinding, TrafficSnapshot,
+      ],
       migrations: [
         AddNodesAndNodeRelations1765960000000,
         AddNodeIpFlagAndInboundLabels1770000000000,
@@ -76,6 +88,10 @@ import { InitialBaseTables1770000000002 } from './migrations/1770000000002-initi
     ClientModule,
     TunnelsModule,
     NodesModule,
+    CommonModule,
+    RoutingProfilesModule,
+    CustomersModule,
+    CustomerGroupsModule,
   ],
   controllers: [AppController],
   providers: [

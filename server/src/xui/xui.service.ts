@@ -319,6 +319,30 @@ export class XuiService {
     }
   }
 
+  async getClientTraffics(email: string, node?: Node): Promise<{ upload: number; download: number; total: number } | null> {
+    try {
+      const api = await this.createAuthenticatedApi(node);
+      if (!api) return null;
+
+      const res = await api.post<XuiResponse<Array<{ upload: number; download: number; total: number }>>>(
+        `/panel/api/inbounds/getClientTraffics/${encodeURIComponent(email)}`,
+      );
+
+      if (res.data?.success && Array.isArray(res.data.obj) && res.data.obj.length > 0) {
+        const traffics = res.data.obj[0];
+        return {
+          upload: Number(traffics.upload) || 0,
+          download: Number(traffics.download) || 0,
+          total: Number(traffics.total) || 0,
+        };
+      }
+    } catch (e) {
+      const error = e as AxiosError;
+      this.logger.warn(`Failed to get client traffics for ${email}: ${error.message}`);
+    }
+    return null;
+  }
+
   async getNewX25519Cert(node?: Node): Promise<XuiCertResult | null> {
     try {
       const api = await this.createAuthenticatedApi(node);
