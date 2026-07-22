@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   OneToMany,
   ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { Inbound } from '../../inbounds/entities/inbound.entity';
 import { Node } from '../../nodes/entities/node.entity';
@@ -65,34 +66,37 @@ export class Subscription {
   inbounds: Inbound[];
 
   // V2 fields
-  @Column({ nullable: true })
+  @Column({ name: 'customer_id', nullable: true })
   customerId?: string;
 
   @ManyToOne(() => Customer, (customer) => customer.subscriptions, {
     nullable: true,
     onDelete: 'SET NULL',
   })
+  @JoinColumn({ name: 'customer_id' })
   customer?: Customer;
 
-  @Column({ nullable: true })
+  @Column({ name: 'group_id', nullable: true })
   groupId?: string;
 
   @ManyToOne(() => CustomerGroup, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'group_id' })
   group?: CustomerGroup;
 
-  @Column({ nullable: true })
+  @Column({ name: 'routing_profile_id', nullable: true })
   routingProfileId?: string;
 
   @ManyToOne(() => RoutingProfile, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'routing_profile_id' })
   routingProfile?: RoutingProfile;
 
-  @Column({ length: 160, nullable: true })
+  @Column({ name: 'public_token', length: 160, nullable: true })
   publicToken?: string;
 
-  @Column({ type: 'bigint', nullable: true })
+  @Column({ name: 'traffic_limit', type: 'bigint', nullable: true })
   trafficLimit?: number;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt?: Date;
 
   @CreateDateColumn()
