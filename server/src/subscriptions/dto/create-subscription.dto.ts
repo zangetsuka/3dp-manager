@@ -11,8 +11,9 @@ import {
   ArrayMaxSize,
   ValidateBy,
   ValidationOptions,
+  IsDateString,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 const PORT_OR_RANDOM = 'portOrRandom';
@@ -125,4 +126,35 @@ export class CreateSubscriptionDto {
   @Type(() => Number)
   @IsInt()
   relayServerId?: number;
+
+  // V2 fields
+  @ApiPropertyOptional({ description: 'ID клиента' })
+  @IsUUID()
+  @IsOptional()
+  customerId?: string;
+
+  @ApiPropertyOptional({ description: 'ID группы' })
+  @IsUUID()
+  @IsOptional()
+  groupId?: string;
+
+  @ApiPropertyOptional({ description: 'ID профиля маршрутизации' })
+  @IsUUID()
+  @IsOptional()
+  routingProfileId?: string;
+
+  @ApiPropertyOptional({ description: 'Публичный токен подписки' })
+  @IsString()
+  @IsOptional()
+  publicToken?: string;
+
+  @ApiPropertyOptional({ description: 'Лимит трафика (байты)' })
+  @IsInt()
+  @IsOptional()
+  trafficLimit?: number;
+
+  @ApiPropertyOptional({ description: 'Срок действия' })
+  @IsDateString()
+  @IsOptional()
+  expiresAt?: string;
 }

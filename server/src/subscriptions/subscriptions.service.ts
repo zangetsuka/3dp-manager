@@ -10,6 +10,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { Node } from '../nodes/entities/node.entity';
 import { Tunnel } from '../tunnels/entities/tunnel.entity';
 import { Inbound } from '../inbounds/entities/inbound.entity';
+import { Customer } from '../customers/entities/customer.entity';
+import { CustomerGroup } from '../customer-groups/entities/customer-group.entity';
+import { RoutingProfile } from '../routing-profiles/entities/routing-profile.entity';
 
 @Injectable()
 export class SubscriptionsService {
@@ -20,6 +23,12 @@ export class SubscriptionsService {
     private nodeRepo: Repository<Node>,
     @InjectRepository(Tunnel)
     private tunnelRepo: Repository<Tunnel>,
+    @InjectRepository(Customer)
+    private customerRepo: Repository<Customer>,
+    @InjectRepository(CustomerGroup)
+    private groupRepo: Repository<CustomerGroup>,
+    @InjectRepository(RoutingProfile)
+    private routingProfileRepo: Repository<RoutingProfile>,
     private xuiService: XuiService,
     private readonly audit: AuditService,
   ) {}
@@ -40,6 +49,12 @@ export class SubscriptionsService {
       isAutoRotationEnabled: dto.isAutoRotationEnabled ?? true,
       node: await this.resolveNode(dto.nodeId),
       relayServer: await this.resolveRelay(dto.relayServerId),
+      customer: dto.customerId ? await this.resolveCustomer(dto.customerId) : undefined,
+      group: dto.groupId ? await this.resolveGroup(dto.groupId) : undefined,
+      routingProfile: dto.routingProfileId ? await this.resolveRoutingProfile(dto.routingProfileId) : undefined,
+      publicToken: dto.publicToken,
+      trafficLimit: dto.trafficLimit,
+      expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
     });
 
     const saved = await this.subRepo.save(sub);
@@ -80,6 +95,19 @@ export class SubscriptionsService {
       sub.relayServer = await this.resolveRelay(dto.relayServerId);
       sub.relayServerId = dto.relayServerId;
     }
+
+    if ('customerId' in dto) {
+      sub.customer = dto.customerId ? await this.resolveCustomer(dto.customerId) : null;
+    }
+    if ('groupId' in dto) {
+      sub.group = dto.groupId ? await this.resolveGroup(dto.groupId) : null;
+    }
+    if ('routingProfileId' in dto) {
+      sub.routingProfile = dto.routingProfileId ? await this.resolveRoutingProfile(dto.routingProfileId) : null;
+    }
+    if ('publicToken' in dto) sub.publicToken = dto.publicToken;
+    if ('trafficLimit' in dto) sub.trafficLimit = dto.trafficLimit;
+    if ('expiresAt' in dto) sub.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
 
     const saved = await this.subRepo.save(sub);
     await this.audit.log({ action: 'UPDATE', entityType: 'subscription', entityId: id, detail: `Updated subscription: ${saved.name}` });
@@ -141,6 +169,24 @@ export class SubscriptionsService {
         .where('node.id = :nodeId', { nodeId: inbound.nodeId })
         .getOne()) ?? inbound.node
     );
+  }
+
+  private async resolveCustomer(customerId: string) {
+    const customer = await this.customerRepo.findOne({ where: { id: customerId } });
+    if (!customer) throw new BadRequestException('Customer not found');
+    return customer;
+  }
+
+  private async resolveGroup(groupId: string) {
+    const group = await this.groupRepo.findOne({ where: { id: groupId } });
+    if (!group) throw new BadRequestException('Group not found');
+    return group;
+  }
+
+  private async resolveRoutingProfile(routingProfileId: string) {
+    const profile = await this.routingProfileRepo.findOne({ where: { id: routingProfileId } });
+    if (!profile) throw new BadRequestException('Routing profile not found');
+    return profile;
   }
 
   private async resolveRelay(relayServerId?: number | null) {
