@@ -4,6 +4,9 @@ import SubscriptionsPage from './pages/SubscriptionsPage';
 import SettingsPage from './pages/SettingsPage';
 import DomainsPage from './pages/DomainsPage';
 import LoginPage from './pages/LoginPage';
+import RoutingProfilesPage from './pages/RoutingProfilesPage';
+import CustomersPage from './pages/CustomersPage';
+import CustomerGroupsPage from './pages/CustomerGroupsPage';
 import { ThemeProvider } from './ThemeContext';
 import { AuthProvider } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
@@ -36,6 +39,9 @@ function App() {
               <Route path="domains" element={<DomainsPage />} />
               <Route path="nodes" element={<NodesPage />} />
               <Route path="tunnels" element={<TunnelsPage />} />
+              <Route path="routing-profiles" element={<RoutingProfilesPage />} />
+              <Route path="customers" element={<CustomersPage />} />
+              <Route path="customer-groups" element={<CustomerGroupsPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

@@ -10,7 +10,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Dns, Hub, People, Settings, SwapHoriz } from '@mui/icons-material';
+import { AccountTree, Dns, Groups, Hub, People, PeopleAlt, Settings, SwapHoriz } from '@mui/icons-material';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 
@@ -24,6 +24,9 @@ const drawerWidth = 240;
 
 const menuItems = [
   { text: 'Подписки', icon: <People />, path: '/' },
+  { text: 'Клиенты', icon: <PeopleAlt />, path: '/customers' },
+  { text: 'Группы клиентов', icon: <Groups />, path: '/customer-groups' },
+  { text: 'Routing Profiles', icon: <AccountTree />, path: '/routing-profiles' },
   { text: 'Ноды', icon: <Hub />, path: '/nodes' },
   { text: 'Relay серверы', icon: <SwapHoriz />, path: '/tunnels' },
   { text: 'Домены', icon: <Dns />, path: '/domains' },

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -31,6 +31,7 @@ import {
   ContentCopy,
   Delete,
   Edit,
+  ExpandMore,
   HelpOutline,
   Link as LinkIcon,
   MoreVert,
@@ -40,6 +41,7 @@ import {
   Refresh,
   Remove,
 } from '@mui/icons-material';
+import { Accordion, AccordionDetails, AccordionSummary } from '@mui/material';
 import { EnhancedDataGrid, type GridColDef } from '../components/EnhancedDataGrid';
 import api from '../api';
 import { copyToClipboard } from '../utils/copyToClipboard';
@@ -55,6 +57,11 @@ interface Subscription {
   inbounds: unknown[];
   inboundsConfig?: InboundConfigUI[];
   isAutoRotationEnabled?: boolean;
+  routingProfileId?: number;
+  customerId?: number;
+  groupId?: number;
+  trafficLimit?: number;
+  expiresAt?: string;
 }
 
 interface Tunnel {
@@ -78,7 +85,6 @@ interface InboundConfigUI {
   name?: string;
   certificateFile?: string;
   keyFile?: string;
-  routingProfile?: string;
 }
 
 interface Domain {
@@ -92,6 +98,22 @@ interface CountryOption {
   emoji: string;
 }
 
+interface RoutingProfile {
+  id: number;
+  name: string;
+  config: string;
+}
+
+interface CustomerRecord {
+  id: number;
+  name: string;
+}
+
+interface CustomerGroupRecord {
+  id: number;
+  name: string;
+}
+
 const CONNECTION_OPTIONS = [
   'vless-tcp-reality',
   'vless-xhttp-reality',
@@ -102,7 +124,6 @@ const CONNECTION_OPTIONS = [
   'shadowsocks-tcp',
   'trojan-tcp-reality',
   'custom',
-  'happ-routing',
 ];
 
 const generateId = () => Math.random().toString(36).substring(7);
@@ -118,6 +139,9 @@ export default function SubscriptionsPage() {
   const [nodes, setNodes] = useState<NodeRecord[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [countries, setCountries] = useState<CountryOption[]>([]);
+  const [routingProfiles, setRoutingProfiles] = useState<RoutingProfile[]>([]);
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const [customerGroups, setCustomerGroups] = useState<CustomerGroupRecord[]>([]);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [activeSub, setActiveSub] = useState<Subscription | null>(null);
   const [open, setOpen] = useState(false);
@@ -134,6 +158,11 @@ export default function SubscriptionsPage() {
     rotation_status: 'active',
     last_rotation_timestamp: '',
   });
+  const [routingProfileId, setRoutingProfileId] = useState<number | ''>('');
+  const [customerId, setCustomerId] = useState<number | ''>('');
+  const [groupId, setGroupId] = useState<number | ''>('');
+  const [trafficLimit, setTrafficLimit] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
   const { showToast } = useToast();
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
@@ -142,6 +171,7 @@ export default function SubscriptionsPage() {
     confirmColor: 'error' as 'error' | 'primary',
     onConfirm: () => {},
   });
+  const initialLoadDone = useRef(false);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -149,7 +179,7 @@ export default function SubscriptionsPage() {
 
   const loadSubs = useCallback(async () => {
     try {
-      const [subsRes, tunnelsRes, nodesRes, domainsRes, countriesRes, settingsRes] =
+      const [subsRes, tunnelsRes, nodesRes, domainsRes, countriesRes, settingsRes, routingRes, customersRes, groupsRes] =
         await Promise.all([
           api.get('/subscriptions'),
           api.get('/tunnels'),
@@ -157,6 +187,9 @@ export default function SubscriptionsPage() {
           api.get('/domains/all'),
           api.get<CountryOption[]>('/settings/countries'),
           api.get('/settings'),
+          api.get('/routing-profiles'),
+          api.get('/customers'),
+          api.get('/customer-groups'),
         ]);
 
       setSubs(Array.isArray(subsRes.data) ? subsRes.data : []);
@@ -168,6 +201,9 @@ export default function SubscriptionsPage() {
       setNodes(Array.isArray(nodesRes.data) ? nodesRes.data : []);
       setDomains(Array.isArray(domainsRes.data) ? domainsRes.data : []);
       setCountries(Array.isArray(countriesRes.data) ? countriesRes.data : []);
+      setRoutingProfiles(Array.isArray(routingRes.data) ? routingRes.data : []);
+      setCustomers(Array.isArray(customersRes.data) ? customersRes.data : []);
+      setCustomerGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
       setRotationSettings((prev) => ({ ...prev, ...settingsRes.data }));
     } catch (error) {
       Logger.error('Failed to load subscriptions data', 'Subs', error);
@@ -176,7 +212,10 @@ export default function SubscriptionsPage() {
   }, []);
 
   useEffect(() => {
-    loadSubs();
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadSubs();
+    }
   }, [loadSubs]);
 
   const getDefaultNodeId = () =>
@@ -214,19 +253,6 @@ export default function SubscriptionsPage() {
 
   const createInbound = (type = 'vless-tcp-reality'): InboundConfigUI => {
     const nodeId = getDefaultNodeId();
-    
-    // HAPP ROUTING - специальная обработка
-    if (type === 'happ-routing') {
-        return {
-            id: generateId(),
-            type,
-            port: '0',
-            sni: '',
-            link: '',
-            routingProfile: '',
-        };
-    }
-    
     const certDefaults = type === 'hysteria2-udp' ? getHysteriaCertDefaults(nodeId) : {};
     return {
         id: generateId(),
@@ -253,6 +279,11 @@ export default function SubscriptionsPage() {
 
     setEditingId(null);
     setName('');
+    setRoutingProfileId('');
+    setCustomerId('');
+    setGroupId('');
+    setTrafficLimit('');
+    setExpiresAt('');
     setInbounds([
       createInbound('hysteria2-udp'),
       createInbound('vless-xhttp-reality'),
@@ -272,6 +303,11 @@ export default function SubscriptionsPage() {
   const handleOpenEdit = (sub: Subscription) => {
     setEditingId(sub.id);
     setName(sub.name);
+    setRoutingProfileId(sub.routingProfileId || '');
+    setCustomerId(sub.customerId || '');
+    setGroupId(sub.groupId || '');
+    setTrafficLimit(sub.trafficLimit != null ? String(sub.trafficLimit) : '');
+    setExpiresAt(sub.expiresAt || '');
     setInbounds(
       (sub.inboundsConfig?.length ? sub.inboundsConfig : [createInbound()]).map((item) => {
         const nodeId = item.nodeId || getDefaultNodeId();
@@ -286,7 +322,6 @@ export default function SubscriptionsPage() {
           relayServerId: item.relayServerId ? item.relayServerId.toString() : '',
           flag: item.flag || getNodeFlag(nodeId),
           name: item.name || '',
-          routingProfile: item.routingProfile || '',
           certificateFile:
             item.type === 'hysteria2-udp'
               ? item.certificateFile || certDefaults.certificateFile
@@ -330,7 +365,7 @@ export default function SubscriptionsPage() {
           next.keyFile = next.keyFile || defaults.keyFile;
         }
 
-        if (field === 'type' && value !== 'custom' && value !== 'happ-routing' && !next.nodeId) {
+        if (field === 'type' && value !== 'custom' && !next.nodeId) {
           next.nodeId = getDefaultNodeId();
           next.flag = getNodeFlag(next.nodeId);
         }
@@ -370,7 +405,7 @@ export default function SubscriptionsPage() {
 
   const handleSave = async () => {
     const nextPortErrors = inbounds.reduce<Record<string, string>>((acc, inbound) => {
-      if (inbound.type !== 'custom' && inbound.type !== 'happ-routing' && !isValidPort(inbound.port)) {
+      if (inbound.type !== 'custom' && !isValidPort(inbound.port)) {
         acc[inbound.id] = 'Порт: число 1-65535 или random';
       }
       return acc;
@@ -386,17 +421,16 @@ export default function SubscriptionsPage() {
       return;
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       name,
+      routingProfileId: routingProfileId || undefined,
+      customerId: customerId || undefined,
+      groupId: groupId || undefined,
+      trafficLimit: trafficLimit ? parseInt(trafficLimit, 10) : undefined,
+      expiresAt: expiresAt || undefined,
       inboundsConfig: inbounds.map((inbound) => {
         if (inbound.type === 'custom') {
           return { type: inbound.type, link: inbound.link };
-        }
-        if (inbound.type === 'happ-routing') {
-          return {
-            type: inbound.type,
-            routingProfile: inbound.routingProfile,
-          };
         }
         return {
           type: inbound.type,
@@ -578,6 +612,8 @@ export default function SubscriptionsPage() {
     setActiveSub(null);
   };
 
+  const selectedRoutingProfile = routingProfiles.find((rp) => rp.id === routingProfileId);
+
   const columns: GridColDef[] = [
     { field: 'name', headerName: 'Имя', width: 250,
       renderCell: (params) => <Typography fontWeight={700}>{params.row.name}</Typography>,
@@ -699,128 +735,171 @@ export default function SubscriptionsPage() {
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth disableRestoreFocus>
         <DialogTitle variant="h5">{editingId ? 'Редактировать подписку' : 'Новая подписка'}</DialogTitle>
-        <DialogContent dividers sx={{ maxHeight: '72vh' }}>
-          <TextField autoFocus margin="dense" label="Имя подписки" fullWidth value={name} onChange={(e) => setName(e.target.value)} sx={{ mb: 2 }} />
-          <Typography variant="h6" sx={{ mb: 2 }}>Инбаунды ({inbounds.length}/20)</Typography>
-          <Box sx={{ maxHeight: '52vh', overflow: 'auto', pr: 1 }}>
-            {inbounds.map((inbound, index) => (
-              <Box
-                key={inbound.id}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 2,
-                  mb: 2,
-                  p: 2,
-                  flexWrap: 'nowrap',
-                  width: 'fit-content',
-                  minWidth: inbound.type === 'custom' ? 780 : inbound.type === 'hysteria2-udp' ? 1540 : 1260,
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                }}
-              >
-                <Typography sx={{ mt: 1, width: 34, flexShrink: 0, fontWeight: 'bold' }}>#{index + 1}</Typography>
-                <FormControl size="small" sx={{ width: 185, flexShrink: 0 }}>
-                  <InputLabel>Тип</InputLabel>
-                  <Select value={inbound.type} label="Тип" onChange={(e) => handleInboundChange(inbound.id, 'type', e.target.value)}>
-                    {CONNECTION_OPTIONS.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+        <DialogContent dividers sx={{ maxHeight: '80vh' }}>
+          {/* === General Section === */}
+          <Accordion defaultExpanded elevation={0} sx={{ mb: 2, '&:before': { display: 'none' }, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Typography variant="h6">Основное</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <TextField autoFocus margin="dense" label="Имя подписки" fullWidth value={name} onChange={(e) => setName(e.target.value)} sx={{ mb: 2 }} />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Клиент</InputLabel>
+                  <Select value={customerId} label="Клиент" onChange={(e) => setCustomerId(e.target.value as number | '')}>
+                    <MenuItem value="">Без клиента</MenuItem>
+                    {customers.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                   </Select>
                 </FormControl>
-                {inbound.type === 'custom' ? (
-                  <TextField size="small" label="Ссылка на подключение" placeholder="vless://..." value={inbound.link || ''} onChange={(e) => handleInboundChange(inbound.id, 'link', e.target.value)} sx={{ width: 460, flexShrink: 0 }} />
-                ) : inbound.type === 'happ-routing' ? (
-                  <TextField
-                    size="small"
-                    label="Routing профиль (JSON или base64)"
-                    placeholder='{"Name":"MyProfile","GlobalProxy":"true","DirectSites":["geosite:cn"]}'
-                    value={inbound.routingProfile || ''}
-                    onChange={(e) => handleInboundChange(inbound.id, 'routingProfile', e.target.value)}
-                    multiline
-                    rows={4}
-                    sx={{ width: 460, flexShrink: 0 }}
-                    helperText="Вставьте JSON профиль или готовую ссылку happ://routing/..."
-                  />
-                ) : (
-                  <>
-                    <FormControl size="small" sx={{ width: 170, flexShrink: 0 }}>
-                      <InputLabel>Нода</InputLabel>
-                      <Select value={inbound.nodeId || ''} label="Нода" onChange={(e) => handleInboundChange(inbound.id, 'nodeId', e.target.value)}>
-                        <MenuItem value="">Основная нода</MenuItem>
-                        {nodes.map((node) => <MenuItem key={node.id} value={node.id}>{node.name}{node.isMain ? ' (основная)' : ''}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ width: 170, flexShrink: 0 }}>
-                      <InputLabel>Relay</InputLabel>
-                      <Select value={inbound.relayServerId || ''} label="Relay" onChange={(e) => handleInboundChange(inbound.id, 'relayServerId', e.target.value)}>
-                        <MenuItem value="">Без relay</MenuItem>
-                        {getRelayOptions(inbound.nodeId).map((tunnel) => <MenuItem key={tunnel.id} value={tunnel.id.toString()}>{tunnel.name}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ width: 170, flexShrink: 0 }}>
-                      <InputLabel>Флаг</InputLabel>
-                      <Select value={inbound.flag || getNodeFlag(inbound.nodeId)} label="Флаг" onChange={(e) => handleInboundChange(inbound.id, 'flag', e.target.value)} renderValue={(value) => <FlagOptionLabel flag={value} label={countries.find((country) => country.emoji === value)?.name || 'Флаг'} />}>
-                        <MenuItem value="">Без флага</MenuItem>
-                        {countries.map((country) => <MenuItem key={country.code} value={country.emoji}><FlagOptionLabel flag={country.emoji} code={country.code} label={country.name} /></MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <TextField size="small" label="Название" value={inbound.name || ''} onChange={(e) => handleInboundChange(inbound.id, 'name', e.target.value)} sx={{ width: 180, flexShrink: 0 }} />
-                    <TextField size="small" label="Порт" placeholder="random или порт" value={inbound.port} onChange={(e) => handleInboundChange(inbound.id, 'port', e.target.value)} error={!!portErrors[inbound.id]} helperText={portErrors[inbound.id] || ''} sx={{ width: 150, flexShrink: 0 }} />
-                    {inbound.type === 'hysteria2-udp' && (
-                      <>
-                        <TextField
-                          size="small"
-                          label="Сертификат"
-                          value={inbound.certificateFile || ''}
-                          onChange={(e) => handleInboundChange(inbound.id, 'certificateFile', e.target.value)}
-                          sx={{ width: 360, flexShrink: 0 }}
-                          InputProps={{
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                <Tooltip title="Путь к сертификату должен существовать на выбранной ноде. По умолчанию используется путь Let's Encrypt.">
-                                  <HelpOutline fontSize="small" color="action" />
-                                </Tooltip>
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                        <TextField
-                          size="small"
-                          label="Приватный ключ"
-                          value={inbound.keyFile || ''}
-                          onChange={(e) => handleInboundChange(inbound.id, 'keyFile', e.target.value)}
-                          sx={{ width: 360, flexShrink: 0 }}
-                          InputProps={{
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                <Tooltip title="Путь к приватному ключу должен существовать на выбранной ноде. По умолчанию используется путь Let's Encrypt.">
-                                  <HelpOutline fontSize="small" color="action" />
-                                </Tooltip>
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      </>
-                    )}
-                    {inbound.type !== 'hysteria2-udp' && (
-                      <FormControl size="small" sx={{ width: 150, flexShrink: 0 }}>
-                        <InputLabel>SNI</InputLabel>
-                        <Select value={inbound.sni} label="SNI" onChange={(e) => handleInboundChange(inbound.id, 'sni', e.target.value)}>
-                          <MenuItem value="random">random</MenuItem>
-                          {domains.map((domain) => <MenuItem key={domain.id} value={domain.name}>{domain.name}</MenuItem>)}
+                <FormControl fullWidth size="small">
+                  <InputLabel>Группа клиентов</InputLabel>
+                  <Select value={groupId} label="Группа клиентов" onChange={(e) => setGroupId(e.target.value as number | '')}>
+                    <MenuItem value="">Без группы</MenuItem>
+                    {customerGroups.map((g) => <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField size="small" label="Лимит трафика (байт)" type="number" value={trafficLimit} onChange={(e) => setTrafficLimit(e.target.value)} fullWidth />
+                <TextField size="small" label="Срок действия (ISO)" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} fullWidth placeholder="2026-12-31T23:59:59Z" />
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+
+          {/* === Routing Section === */}
+          <Accordion defaultExpanded elevation={0} sx={{ mb: 2, '&:before': { display: 'none' }, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Typography variant="h6">Routing</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                <InputLabel>Routing Profile</InputLabel>
+                <Select value={routingProfileId} label="Routing Profile" onChange={(e) => setRoutingProfileId(e.target.value as number | '')}>
+                  <MenuItem value="">Без маршрутизации</MenuItem>
+                  {routingProfiles.map((rp) => <MenuItem key={rp.id} value={rp.id}>{rp.name}</MenuItem>)}
+                </Select>
+              </FormControl>
+              {selectedRoutingProfile && (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  value={selectedRoutingProfile.config || ''}
+                  slotProps={{ input: { readOnly: true, sx: { fontFamily: 'monospace', fontSize: '0.75rem' } } }}
+                  label="Предпросмотр конфига"
+                />
+              )}
+            </AccordionDetails>
+          </Accordion>
+
+          {/* === Connections Section === */}
+          <Accordion defaultExpanded elevation={0} sx={{ '&:before': { display: 'none' }, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Typography variant="h6">Подключения ({inbounds.length}/20)</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Stack spacing={2} sx={{ maxHeight: '50vh', overflow: 'auto', pr: 1 }}>
+                {inbounds.map((inbound, index) => (
+                  <Paper
+                    key={inbound.id}
+                    variant="outlined"
+                    sx={{ p: 2 }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                      <Typography sx={{ fontWeight: 'bold', mr: 1 }}>#{index + 1}</Typography>
+                      <FormControl size="small" sx={{ flexGrow: 1 }}>
+                        <InputLabel>Тип</InputLabel>
+                        <Select value={inbound.type} label="Тип" onChange={(e) => handleInboundChange(inbound.id, 'type', e.target.value)}>
+                          {CONNECTION_OPTIONS.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
                         </Select>
                       </FormControl>
+                      <IconButton color="primary" onClick={() => removeInbound(inbound.id)} disabled={inbounds.length <= 1} size="small">
+                        <Delete />
+                      </IconButton>
+                    </Box>
+
+                    {inbound.type === 'custom' ? (
+                      <TextField size="small" label="Ссылка на подключение" placeholder="vless://..." value={inbound.link || ''} onChange={(e) => handleInboundChange(inbound.id, 'link', e.target.value)} fullWidth />
+                    ) : (
+                      <>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                          <FormControl size="small">
+                            <InputLabel>Нода</InputLabel>
+                            <Select value={inbound.nodeId || ''} label="Нода" onChange={(e) => handleInboundChange(inbound.id, 'nodeId', e.target.value)}>
+                              <MenuItem value="">Основная нода</MenuItem>
+                              {nodes.map((node) => <MenuItem key={node.id} value={node.id}>{node.name}{node.isMain ? ' (основная)' : ''}</MenuItem>)}
+                            </Select>
+                          </FormControl>
+                          <TextField size="small" label="Порт" placeholder="random или порт" value={inbound.port} onChange={(e) => handleInboundChange(inbound.id, 'port', e.target.value)} error={!!portErrors[inbound.id]} helperText={portErrors[inbound.id] || ' '} />
+                          <FormControl size="small">
+                            <InputLabel>SNI</InputLabel>
+                            <Select value={inbound.sni} label="SNI" onChange={(e) => handleInboundChange(inbound.id, 'sni', e.target.value)}>
+                              <MenuItem value="random">random</MenuItem>
+                              {domains.map((domain) => <MenuItem key={domain.id} value={domain.name}>{domain.name}</MenuItem>)}
+                            </Select>
+                          </FormControl>
+                          <FormControl size="small">
+                            <InputLabel>Флаг</InputLabel>
+                            <Select value={inbound.flag || getNodeFlag(inbound.nodeId)} label="Флаг" onChange={(e) => handleInboundChange(inbound.id, 'flag', e.target.value)} renderValue={(value) => <FlagOptionLabel flag={value} label={countries.find((country) => country.emoji === value)?.name || 'Флаг'} />}>
+                              <MenuItem value="">Без флага</MenuItem>
+                              {countries.map((country) => <MenuItem key={country.code} value={country.emoji}><FlagOptionLabel flag={country.emoji} code={country.code} label={country.name} /></MenuItem>)}
+                            </Select>
+                          </FormControl>
+                          <TextField size="small" label="Название" value={inbound.name || ''} onChange={(e) => handleInboundChange(inbound.id, 'name', e.target.value)} />
+                          <FormControl size="small">
+                            <InputLabel>Relay</InputLabel>
+                            <Select value={inbound.relayServerId || ''} label="Relay" onChange={(e) => handleInboundChange(inbound.id, 'relayServerId', e.target.value)}>
+                              <MenuItem value="">Без relay</MenuItem>
+                              {getRelayOptions(inbound.nodeId).map((tunnel) => <MenuItem key={tunnel.id} value={tunnel.id.toString()}>{tunnel.name}</MenuItem>)}
+                            </Select>
+                          </FormControl>
+                        </Box>
+
+                        {inbound.type === 'hysteria2-udp' && (
+                          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mt: 1.5 }}>
+                            <TextField
+                              size="small"
+                              label="Сертификат"
+                              value={inbound.certificateFile || ''}
+                              onChange={(e) => handleInboundChange(inbound.id, 'certificateFile', e.target.value)}
+                              InputProps={{
+                                endAdornment: (
+                                  <InputAdornment position="end">
+                                    <Tooltip title="Путь к сертификату должен существовать на выбранной ноде. По умолчанию используется путь Let's Encrypt.">
+                                      <HelpOutline fontSize="small" color="action" />
+                                    </Tooltip>
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                            <TextField
+                              size="small"
+                              label="Приватный ключ"
+                              value={inbound.keyFile || ''}
+                              onChange={(e) => handleInboundChange(inbound.id, 'keyFile', e.target.value)}
+                              InputProps={{
+                                endAdornment: (
+                                  <InputAdornment position="end">
+                                    <Tooltip title="Путь к приватному ключу должен существовать на выбранной ноде. По умолчанию используется путь Let's Encrypt.">
+                                      <HelpOutline fontSize="small" color="action" />
+                                    </Tooltip>
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          </Box>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-                <IconButton color="primary" onClick={() => removeInbound(inbound.id)} disabled={inbounds.length <= 1} sx={{ mt: 0.5, flexShrink: 0 }}>
-                  <Delete />
-                </IconButton>
+                  </Paper>
+                ))}
+              </Stack>
+              <Box sx={{ mt: 2 }}>
+                <Button variant="outlined" size="small" startIcon={<Add />} onClick={addInbound} disabled={inbounds.length >= 20}>Добавить подключение</Button>
+                <Button variant="outlined" color="error" size="small" startIcon={<Remove />} sx={{ ml: 1 }} onClick={() => removeInbound()}>Удалить все</Button>
               </Box>
-            ))}
-          </Box>
-          <Button variant="outlined" size="small" startIcon={<Add />} onClick={addInbound} disabled={inbounds.length >= 20}>Добавить инбаунд</Button>
-          <Button variant="outlined" color="error" size="small" startIcon={<Remove />} sx={{ ml: 0.5 }} onClick={() => removeInbound()}>Удалить все</Button>
+            </AccordionDetails>
+          </Accordion>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Отмена</Button>
@@ -858,8 +937,6 @@ export default function SubscriptionsPage() {
           <Button onClick={handleGenerateCreatedSubscription} variant="contained">Да</Button>
         </DialogActions>
       </Dialog>
-
-
     </Box>
   );
 }
