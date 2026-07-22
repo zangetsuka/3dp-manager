@@ -11,9 +11,9 @@ import { Subscription } from '../../subscriptions/entities/subscription.entity';
 import { Customer } from '../../customers/entities/customer.entity';
 
 @Entity()
-@Index('ix_traffic_customer_time', ['customerId', 'collectedAt DESC'])
-@Index('ix_traffic_subscription_time', ['subscriptionId', 'collectedAt DESC'])
-@Index('ix_traffic_binding_time', ['bindingId', 'collectedAt DESC'])
+@Index('ix_traffic_customer_time', ['customerId', 'collectedAt'])
+@Index('ix_traffic_subscription_time', ['subscriptionId', 'collectedAt'])
+@Index('ix_traffic_binding_time', ['bindingId', 'collectedAt'])
 export class TrafficSnapshot {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: number;
